@@ -24,6 +24,37 @@ src/
     └── tools.ts          # MCP tool definitions
 ```
 
+## Data Schema and Storage
+
+The task manager stores data in a JSON file:
+- **Default location**: `~/Documents/tasks.json` (in user's home directory)
+- **Custom location**: Set via `TASK_MANAGER_FILE_PATH` environment variable
+
+```bash
+# Example of setting custom storage location
+TASK_MANAGER_FILE_PATH=/path/to/custom/tasks.json npm start
+```
+
+The data schema is organized as follows:
+
+```
+TaskManagerFile
+├── requests: RequestEntry[]
+    ├── requestId: string            # Format: "req-{number}"
+    ├── originalRequest: string      # Original user request text
+    ├── splitDetails: string         # Additional request details
+    ├── completed: boolean           # Request completion status
+    └── tasks: Task[]                # Array of tasks
+        ├── id: string               # Format: "task-{number}"
+        ├── title: string            # Short task title
+        ├── description: string      # Detailed task description
+        ├── done: boolean            # Task completion status
+        ├── approved: boolean        # Task approval status
+        └── completedDetails: string # Completion information
+```
+
+The system persists this structure to the JSON file after each operation.
+
 ## Installation
 
 ```bash
