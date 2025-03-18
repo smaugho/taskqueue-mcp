@@ -1,6 +1,57 @@
-# MCP TaskManager
+# MCP Task Manager
 
-Model Context Protocol server for Task Management. This allows Claude Desktop (or any MCP client) to manage and execute tasks in a queue-based system.
+A Model Context Protocol (MCP) server for AI task management. This tool helps AI assistants handle multi-step tasks in a structured way, with user approval checkpoints.
+
+## Features
+
+- Task planning with multiple steps
+- Progress tracking
+- User approval of completed tasks
+- Request completion approval
+- Task details visualization
+
+## Structure
+
+The codebase has been refactored into a modular structure:
+
+```
+src/
+├── index.ts              # Main entry point
+├── server/
+│   └── TaskManagerServer.ts   # Core server functionality
+└── types/
+    ├── index.ts          # Type definitions and schemas
+    └── tools.ts          # MCP tool definitions
+```
+
+## Installation
+
+```bash
+npm install
+npm run build
+```
+
+## Usage
+
+```bash
+npm start
+```
+
+You can also set a custom path for the tasks file:
+
+```bash
+TASK_MANAGER_FILE_PATH=/path/to/tasks.json npm start
+```
+
+## Development
+
+```bash
+npm run dev
+```
+
+## License
+
+MIT
 
 <a href="https://glama.ai/mcp/servers/bdjh7kx05h"><img width="380" height="200" src="https://glama.ai/mcp/servers/bdjh7kx05h/badge" alt="@kazuph/mcp-taskmanager MCP server" /></a>
 

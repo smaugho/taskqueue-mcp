@@ -1,2 +1,10 @@
 dist
 node_modules
+.specstory
+.DS_Store
+.idea
+.vscode
+.env
+.env.local
+.cursor
+artifacts
