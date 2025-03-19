@@ -327,4 +327,95 @@ describe('TaskManagerServer', () => {
       expect(task?.status).toBe('done');
     });
   });
+
+  describe('Project Approval', () => {
+    let projectId: string;
+    let taskId1: string;
+    let taskId2: string;
+    
+    beforeEach(async () => {
+      // Create a project with two tasks for each test in this group
+      const createResult = await server.createProject(
+        'Test project for approval',
+        [
+          {
+            title: 'Task 1',
+            description: 'Description for task 1'
+          },
+          {
+            title: 'Task 2',
+            description: 'Description for task 2'
+          }
+        ]
+      ) as { 
+        projectId: string; 
+        tasks: { id: string }[];
+      };
+      
+      projectId = createResult.projectId;
+      taskId1 = createResult.tasks[0].id;
+      taskId2 = createResult.tasks[1].id;
+    });
+    
+    it('should not approve project if tasks are not done', async () => {
+      const result = await server.approveProjectCompletion(projectId);
+      expect(result.status).toBe('error');
+      expect(result.message).toContain('Not all tasks are done');
+    });
+    
+    it('should not approve project if tasks are done but not approved', async () => {
+      // Mark both tasks as done
+      const task1 = server["data"].projects.find(p => p.projectId === projectId)?.tasks.find(t => t.id === taskId1);
+      const task2 = server["data"].projects.find(p => p.projectId === projectId)?.tasks.find(t => t.id === taskId2);
+      if (task1 && task2) {
+        task1.status = 'done';
+        task2.status = 'done';
+        await server["saveTasks"]();
+      }
+      
+      const result = await server.approveProjectCompletion(projectId);
+      expect(result.status).toBe('error');
+      expect(result.message).toContain('Not all done tasks are approved');
+    });
+    
+    it('should approve project when all tasks are done and approved', async () => {
+      // Mark both tasks as done and approved
+      const task1 = server["data"].projects.find(p => p.projectId === projectId)?.tasks.find(t => t.id === taskId1);
+      const task2 = server["data"].projects.find(p => p.projectId === projectId)?.tasks.find(t => t.id === taskId2);
+      if (task1 && task2) {
+        task1.status = 'done';
+        task2.status = 'done';
+        task1.approved = true;
+        task2.approved = true;
+        await server["saveTasks"]();
+      }
+      
+      const result = await server.approveProjectCompletion(projectId);
+      expect(result.status).toBe('project_approved_complete');
+      
+      // Verify project is marked as completed
+      const project = server["data"].projects.find(p => p.projectId === projectId);
+      expect(project?.completed).toBe(true);
+    });
+    
+    it('should not allow approving an already completed project', async () => {
+      // First approve the project
+      const task1 = server["data"].projects.find(p => p.projectId === projectId)?.tasks.find(t => t.id === taskId1);
+      const task2 = server["data"].projects.find(p => p.projectId === projectId)?.tasks.find(t => t.id === taskId2);
+      if (task1 && task2) {
+        task1.status = 'done';
+        task2.status = 'done';
+        task1.approved = true;
+        task2.approved = true;
+        await server["saveTasks"]();
+      }
+      
+      await server.approveProjectCompletion(projectId);
+      
+      // Try to approve again
+      const result = await server.approveProjectCompletion(projectId);
+      expect(result.status).toBe('error');
+      expect(result.message).toContain('Project is already completed');
+    });
+  });
 }); 

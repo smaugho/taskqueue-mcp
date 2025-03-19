@@ -213,16 +213,18 @@ The TaskManager now uses a direct tools interface with specific, purpose-built t
 Tasks have a status field that can be one of:
 - `not started`: Task has not been started yet
 - `in progress`: Task is currently being worked on
-- `done`: Task has been completed
+- `done`: Task has been completed (requires `completedDetails`)
 
 #### Status Transition Rules
+
 The system enforces the following rules for task status transitions:
 - Tasks follow a specific workflow with defined valid transitions:
   - From `not started`: Can only move to `in progress`
   - From `in progress`: Can move to either `done` or back to `not started`
   - From `done`: Can move back to `in progress` if additional work is needed
-- When a task is marked as "done", the `completedDetails` field should be provided to document what was completed
+- When a task is marked as "done", the `completedDetails` field must be provided to document what was completed
 - Approved tasks cannot be modified
+- A project can only be approved when all tasks are both done and approved
 
 These rules help maintain the integrity of task progress and ensure proper documentation of completed work.
 
@@ -243,7 +245,7 @@ A typical workflow for an LLM using this task manager would be:
 
 #### Task Approval
 
-Task approval is controlled exclusively by the human user through a CLI command:
+Task approval is controlled exclusively by the human user through the CLI command:
 
 ```bash
 npm run approve-task -- <projectId> <taskId>
@@ -252,7 +254,7 @@ npm run approve-task -- <projectId> <taskId>
 Options:
 - `-f, --force`: Force approval even if the task is not marked as done
 
-This command sets the `approved` field of a task to `true` after verifying that the task is marked as `done`. Only the human user can approve tasks, ensuring quality control.
+Note: Tasks must be marked as "done" with completed details before they can be approved (unless using --force).
 
 #### Listing Tasks and Projects
 
@@ -342,7 +344,7 @@ const nextTaskResult = await toolManager.callFunction('get_next_task', {
 const markDoneResult = await toolManager.callFunction('mark_task_done', {
   projectId: "proj-1234",
   taskId: "task-1",
-  completedDetails: "Created repository at github.com/example/business-site and initialized with HTML5 boilerplate, CSS reset, and basic JS structure."
+  completedDetails: "Created repository at github.com/example/business-site and initialized with HTML5 boilerplate, CSS reset, and basic JS structure."  // Required when marking as done
 });
 
 // Response will include:

@@ -151,6 +151,92 @@ program
   });
 
 program
+  .command("approve-project")
+  .description("Approve project completion")
+  .argument("<projectId>", "ID of the project to approve")
+  .action(async (projectId) => {
+    try {
+      console.log(chalk.blue(`Approving project ${chalk.bold(projectId)}...`));
+
+      const data = await readData();
+
+      // Check if we have any projects
+      if (data.projects.length === 0) {
+        console.error(chalk.red(`No projects found. The task file is empty or just initialized.`));
+        process.exit(1);
+      }
+
+      const project = data.projects.find(p => p.projectId === projectId);
+
+      if (!project) {
+        console.error(chalk.red(`Project ${chalk.bold(projectId)} not found.`));
+        console.log(chalk.yellow('Available projects:'));
+        data.projects.forEach(p => {
+          console.log(`  - ${p.projectId}: ${p.initialPrompt.substring(0, 50)}${p.initialPrompt.length > 50 ? '...' : ''}`);
+        });
+        process.exit(1);
+      }
+
+      // Check if all tasks are done & approved
+      const allDone = project.tasks.every(t => t.status === "done");
+      if (!allDone) {
+        console.error(chalk.red(`Not all tasks in project ${chalk.bold(projectId)} are marked as done.`));
+        console.log(chalk.yellow('\nPending tasks:'));
+        project.tasks.filter(t => t.status !== "done").forEach(t => {
+          console.log(`  - ${chalk.bold(t.id)}: ${t.title} (Status: ${t.status})`);
+        });
+        process.exit(1);
+      }
+
+      const allApproved = project.tasks.every(t => t.approved);
+      if (!allApproved) {
+        console.error(chalk.red(`Not all tasks in project ${chalk.bold(projectId)} are approved yet.`));
+        console.log(chalk.yellow('\nUnapproved tasks:'));
+        project.tasks.filter(t => !t.approved).forEach(t => {
+          console.log(`  - ${chalk.bold(t.id)}: ${t.title}`);
+        });
+        process.exit(1);
+      }
+
+      if (project.completed) {
+        console.log(chalk.yellow(`Project ${chalk.bold(projectId)} is already approved and completed.`));
+        process.exit(0);
+      }
+
+      project.completed = true;
+      await writeData(data);
+      console.log(chalk.green(`✅ Project ${chalk.bold(projectId)} has been approved and marked as complete.`));
+
+      // Show project info
+      console.log(chalk.cyan('\n📋 Project details:'));
+      console.log(`  - ${chalk.bold('Initial Prompt:')} ${project.initialPrompt}`);
+      if (project.projectPlan && project.projectPlan !== project.initialPrompt) {
+        console.log(`  - ${chalk.bold('Project Plan:')} ${project.projectPlan}`);
+      }
+      console.log(`  - ${chalk.bold('Status:')} ${chalk.green('Completed ✓')}`);
+
+      // Show progress info
+      const totalTasks = project.tasks.length;
+      const completedTasks = project.tasks.filter(t => t.status === "done").length;
+      const approvedTasks = project.tasks.filter(t => t.approved).length;
+      
+      console.log(chalk.cyan(`\n📊 Final Progress: ${chalk.bold(`${approvedTasks}/${completedTasks}/${totalTasks}`)} (approved/completed/total)`));
+      
+      // Create a progress bar
+      const bar = '▓'.repeat(approvedTasks) + '▒'.repeat(completedTasks - approvedTasks) + '░'.repeat(totalTasks - completedTasks);
+      console.log(`  ${bar}`);
+
+      console.log(chalk.green('\n🎉 Project successfully completed and approved!'));
+      console.log(chalk.gray('You can view the project details anytime using:'));
+      console.log(chalk.blue(`  task-manager-cli list -p ${projectId}`));
+
+    } catch (error) {
+      console.error(chalk.red(`An error occurred: ${error instanceof Error ? error.message : String(error)}`));
+      process.exit(1);
+    }
+  });
+
+program
   .command("list")
   .description("List all projects and their tasks")
   .option('-p, --project <projectId>', 'Show details for a specific project')

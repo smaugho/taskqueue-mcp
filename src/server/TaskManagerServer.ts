@@ -267,6 +267,11 @@ export class TaskManagerServer {
     const proj = this.data.projects.find((p) => p.projectId === projectId);
     if (!proj) return { status: "error", message: "Project not found" };
 
+    // Check if project is already completed
+    if (proj.completed) {
+      return { status: "error", message: "Project is already completed." };
+    }
+
     // Check if all tasks are done and approved
     const allDone = proj.tasks.every((t) => t.status === "done");
     if (!allDone) {

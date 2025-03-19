@@ -302,4 +302,70 @@ describe('TaskManagerServer Integration', () => {
     const project = server["data"].projects.find(p => p.projectId === projectId);
     expect(project?.completed).toBe(true);
   });
+
+  it('should handle project approval workflow', async () => {
+    // 1. Create a project with multiple tasks
+    const createResult = await server.createProject(
+      'Project for approval workflow',
+      [
+        {
+          title: 'Task 1',
+          description: 'Description of task 1'
+        },
+        {
+          title: 'Task 2',
+          description: 'Description of task 2'
+        }
+      ]
+    ) as { 
+      projectId: string; 
+      tasks: { id: string }[];
+    };
+
+    const projectId = createResult.projectId;
+    const taskId1 = createResult.tasks[0].id;
+    const taskId2 = createResult.tasks[1].id;
+
+    // 2. Try to approve project before tasks are done (should fail)
+    const earlyApprovalResult = await server.approveProjectCompletion(projectId);
+    expect(earlyApprovalResult.status).toBe('error');
+    expect(earlyApprovalResult.message).toContain('Not all tasks are done');
+
+    // 3. Mark tasks as done
+    await server.markTaskDone(projectId, taskId1, 'Task 1 completed details');
+    await server.markTaskDone(projectId, taskId2, 'Task 2 completed details');
+
+    // 4. Try to approve project before tasks are approved (should fail)
+    const preApprovalResult = await server.approveProjectCompletion(projectId);
+    expect(preApprovalResult.status).toBe('error');
+    expect(preApprovalResult.message).toContain('Not all done tasks are approved');
+
+    // 5. Approve tasks
+    await server.approveTaskCompletion(projectId, taskId1);
+    await server.approveTaskCompletion(projectId, taskId2);
+
+    // 6. Now approve the project (should succeed)
+    const approvalResult = await server.approveProjectCompletion(projectId);
+    expect(approvalResult.status).toBe('project_approved_complete');
+
+    // 7. Verify project state
+    const project = server["data"].projects.find(p => p.projectId === projectId);
+    expect(project?.completed).toBe(true);
+    expect(project?.tasks.every(t => t.status === 'done')).toBe(true);
+    expect(project?.tasks.every(t => t.approved)).toBe(true);
+
+    // 8. Try to approve again (should fail)
+    const reapprovalResult = await server.approveProjectCompletion(projectId);
+    expect(reapprovalResult.status).toBe('error');
+    expect(reapprovalResult.message).toContain('Project is already completed');
+
+    // 9. Verify project is still listed
+    const listResult = await server.listProjects();
+    const listedProject = listResult.projects?.find(p => p.projectId === projectId);
+    expect(listedProject).toBeDefined();
+    expect(listedProject?.initialPrompt).toBe('Project for approval workflow');
+    expect(listedProject?.totalTasks).toBe(2);
+    expect(listedProject?.completedTasks).toBe(2);
+    expect(listedProject?.approvedTasks).toBe(2);
+  });
 }); 

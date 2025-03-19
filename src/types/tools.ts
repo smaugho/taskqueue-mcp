@@ -32,7 +32,7 @@ const readProjectTool: Tool = {
 // Create Project
 const createProjectTool: Tool = {
   name: "create_project",
-  description: "Create a new project with an initial prompt and a list of tasks.",
+  description: "Create a new project with an initial prompt and a list of tasks. This is typically the first step in any workflow.",
   inputSchema: {
     type: "object",
     properties: {
@@ -120,7 +120,7 @@ const addTasksToProjectTool: Tool = {
 // Finalize Project (Mark as Complete)
 const finalizeProjectTool: Tool = {
   name: "finalize_project",
-  description: "Mark a project as complete after all tasks are done and approved.",
+  description: "Mark a project as complete. Can only be called when all tasks are both done and approved. This is typically the last step in a project workflow.",
   inputSchema: {
     type: "object",
     properties: {
@@ -199,7 +199,7 @@ const createTaskTool: Tool = {
 // Update Task
 const updateTaskTool: Tool = {
   name: "update_task",
-  description: "Modify a task's title, description, or status. Note: completedDetails are required when setting status to 'done'.",
+  description: "Modify a task's properties. Note: (1) completedDetails are required when setting status to 'done', (2) approved tasks cannot be modified, (3) status must follow valid transitions: not started → in progress → done.",
   inputSchema: {
     type: "object",
     properties: {
@@ -256,7 +256,7 @@ const deleteTaskTool: Tool = {
 // Approve Task
 const approveTaskTool: Tool = {
   name: "approve_task",
-  description: "Approve a completed task.",
+  description: "Approve a completed task. Tasks must be marked as 'done' with completedDetails before approval. Note: This is a CLI-only operation that requires human intervention.",
   inputSchema: {
     type: "object",
     properties: {
@@ -276,7 +276,7 @@ const approveTaskTool: Tool = {
 // Get Next Task
 const getNextTaskTool: Tool = {
   name: "get_next_task",
-  description: "Get the next task to be done in a project.",
+  description: "Get the next task to be done in a project. Returns the first non-approved task in sequence, regardless of status. Use this to determine which task to work on next.",
   inputSchema: {
     type: "object",
     properties: {
