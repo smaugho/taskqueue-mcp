@@ -172,27 +172,30 @@ Add the following to your MCP client's configuration:
 
 ## Available Operations
 
-The TaskManager now uses a consolidated API with two main tools:
+The TaskManager now uses a direct tools interface with specific, purpose-built tools for each operation:
 
-### `project` Tool
-Manages high-level projects with multiple tasks.
+### Project Management Tools
 
-**Actions:**
-- `list`: List all projects in the system
-- `create`: Create a new project with initial tasks
-- `delete`: Remove a project
-- `add_tasks`: Add new tasks to an existing project
-- `finalize`: Finalize a project after all tasks are done and approved
+- `list_projects`: Lists all projects in the system
+- `read_project`: Gets details about a specific project
+- `create_project`: Creates a new project with initial tasks
+- `delete_project`: Removes a project
+- `add_tasks_to_project`: Adds new tasks to an existing project
+- `finalize_project`: Finalizes a project after all tasks are done
 
-### `task` Tool
-Manages individual tasks within projects.
+### Task Management Tools
 
-**Actions:**
-- `read`: Get details of a specific task
-- `update`: Modify a task's properties (title, description, status)
-- `delete`: Remove a task from a project
+- `list_tasks`: Lists all tasks for a specific project
+- `read_task`: Gets details of a specific task
+- `create_task`: Creates a new task in a project
+- `update_task`: Modifies a task's properties (title, description, status)
+- `delete_task`: Removes a task from a project
+- `approve_task`: Approves a completed task
+- `get_next_task`: Gets the next pending task in a project
+- `mark_task_done`: Marks a task as completed with details
 
-### Task Status
+### Task Status and Workflows
+
 Tasks have a status field that can be one of:
 - `not started`: Task has not been started yet
 - `in progress`: Task is currently being worked on
@@ -204,11 +207,23 @@ The system enforces the following rules for task status transitions:
   - From `not started`: Can only move to `in progress`
   - From `in progress`: Can move to either `done` or back to `not started`
   - From `done`: Can move back to `in progress` if additional work is needed
-- A task cannot skip states (e.g., cannot go directly from "not started" to "done")
-- When a task is marked as "done", the `completedDetails` field is required
+- When a task is marked as "done", the `completedDetails` field should be provided to document what was completed
 - Approved tasks cannot be modified
 
 These rules help maintain the integrity of task progress and ensure proper documentation of completed work.
+
+### Usage Workflow
+
+A typical workflow for an LLM using this task manager would be:
+
+1. `create_project`: Start a project with initial tasks
+2. `get_next_task`: Get the first pending task
+3. Work on the task
+4. `mark_task_done`: Mark the task as complete with details
+5. Wait for approval (user must call `approve_task` through the CLI)
+6. `get_next_task`: Get the next pending task
+7. Repeat steps 3-6 until all tasks are complete
+8. `finalize_project`: Complete the project (requires user approval)
 
 ### CLI Commands
 
@@ -248,44 +263,113 @@ This command displays information about all projects in the system or a specific
 ## Example Usage
 
 ### Creating a Project with Tasks
-```json
-{
-  "tool": "project",
-  "action": "create",
-  "arguments": {
-    "initialPrompt": "Write a blog post about cats",
-    "tasks": [
-      { "title": "Research cat breeds", "description": "Find information about 5 popular cat breeds" },
-      { "title": "Create outline", "description": "Organize main points and structure of the blog" },
-      { "title": "Write draft", "description": "Write the first draft of the blog post" },
-      { "title": "Edit and finalize", "description": "Proofread and make final edits to the blog post" }
-    ]
-  }
-}
+
+```javascript
+// Example of how an LLM would use the create_project tool
+const createProjectResult = await toolManager.callFunction('create_project', {
+  initialPrompt: "Create a website for a small business",
+  projectPlan: "We'll create a responsive website with Home, About, Services, and Contact pages",
+  tasks: [
+    { 
+      title: "Set up project structure", 
+      description: "Create repository and initialize with basic HTML/CSS/JS files" 
+    },
+    { 
+      title: "Design homepage", 
+      description: "Create responsive homepage with navigation and hero section" 
+    },
+    { 
+      title: "Implement about page", 
+      description: "Create about page with company history and team section" 
+    }
+  ]
+});
+
+// Response will include:
+// {
+//   status: "planned",
+//   projectId: "proj-1234",
+//   totalTasks: 3,
+//   tasks: [
+//     { id: "task-1", title: "Set up project structure", ... },
+//     { id: "task-2", title: "Design homepage", ... },
+//     { id: "task-3", title: "Implement about page", ... }
+//   ],
+//   message: "Project created with 3 tasks"
+// }
 ```
 
-### Updating a Task Status
-```json
-{
-  "tool": "task",
-  "action": "update",
-  "arguments": {
-    "projectId": "proj-1",
-    "taskId": "task-1",
-    "status": "in progress"
-  }
-}
+### Getting the Next Task
+
+```javascript
+// Example of how an LLM would use the get_next_task tool
+const nextTaskResult = await toolManager.callFunction('get_next_task', {
+  projectId: "proj-1234"
+});
+
+// Response will include:
+// {
+//   status: "next_task",
+//   task: {
+//     id: "task-1",
+//     title: "Set up project structure",
+//     description: "Create repository and initialize with basic HTML/CSS/JS files",
+//     status: "not started",
+//     approved: false
+//   },
+//   message: "Retrieved next task"
+// }
 ```
+
+### Marking a Task as Done
+
+```javascript
+// Example of how an LLM would use the mark_task_done tool
+const markDoneResult = await toolManager.callFunction('mark_task_done', {
+  projectId: "proj-1234",
+  taskId: "task-1",
+  completedDetails: "Created repository at github.com/example/business-site and initialized with HTML5 boilerplate, CSS reset, and basic JS structure."
+});
+
+// Response will include:
+// {
+//   status: "task_marked_done",
+//   task: {
+//     id: "task-1",
+//     title: "Set up project structure",
+//     status: "done",
+//     approved: false,
+//     completedDetails: "Created repository at github.com/example/business-site and initialized with HTML5 boilerplate, CSS reset, and basic JS structure."
+//   },
+//   message: "Task marked as done"
+// }
+```
+
+### Approving a Task (CLI-only operation)
+
+This operation can only be performed by the user through the CLI:
+
+```bash
+npm run approve-task -- proj-1234 task-1
+```
+
+After approval, the LLM can check the task status using `read_task` or get the next task using `get_next_task`.
 
 ### Finalizing a Project
-```json
-{
-  "tool": "project",
-  "action": "finalize",
-  "arguments": {
-    "projectId": "proj-1"
-  }
-}
+
+```javascript
+// Example of how an LLM would use the finalize_project tool
+// (Called after all tasks are done and approved)
+const finalizeResult = await toolManager.callFunction('finalize_project', {
+  projectId: "proj-1234"
+});
+
+// Response will include:
+// {
+//   status: "project_finalized",
+//   projectId: "proj-1234",
+//   message: "Project has been finalized"
+// }
 ```
 
 ## Status Codes and Responses
