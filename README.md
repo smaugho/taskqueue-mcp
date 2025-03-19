@@ -65,8 +65,13 @@ The system persists this structure to the JSON file after each operation.
 ## Installation
 
 ```bash
-npm install
-npm run build
+npm install @chriscarrollsmith/mcp-taskmanager
+```
+
+You can also install globally:
+
+```bash
+npm install -g @chriscarrollsmith/mcp-taskmanager
 ```
 
 ## Usage

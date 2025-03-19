@@ -1,5 +1,5 @@
 {
-	"name": "mcp-taskmanager",
+	"name": "@chriscarrollsmith/mcp-taskmanager",
 	"version": "1.0.0",
 	"description": "Task Manager MCP Server",
 	"author": "Christopher C. Smith (christopher.smith@promptlytechnologies.com)",
@@ -10,7 +10,10 @@
 		"task-manager-cli": "dist/cli.js"
 	},
 	"files": [
-		"dist"
+		"dist/index.js",
+		"dist/src/**/*.js",
+		"dist/src/**/*.d.ts",
+		"dist/src/**/*.js.map"
 	],
 	"scripts": {
 		"build": "tsc",

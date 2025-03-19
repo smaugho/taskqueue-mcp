@@ -1,0 +1,29 @@
+# Source files
+src/
+tests/
+artifacts/
+
+# Config files
+.github/
+.vscode/
+.gitignore
+.npmrc
+tsconfig.json
+jest.config.js
+
+# Test files
+**/test/
+**/tests/
+**/*.test.ts
+**/*.spec.ts
+
+# Miscellaneous
+.DS_Store
+*.log
+node_modules/
+coverage/
+tmp/
+temp/
+.cursor/
+.specstory/
+repomix-output.txt
