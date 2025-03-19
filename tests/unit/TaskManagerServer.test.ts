@@ -10,25 +10,17 @@ import * as fs from 'node:fs/promises';
 describe('TaskManagerServer', () => {
   let server: TaskManagerServer;
   let tempDir: string;
-  let testFilePath: string;
+  let tasksFilePath: string;
 
   beforeEach(async () => {
-    // Create a unique temp directory for each test
-    tempDir = path.join(os.tmpdir(), `task-manager-test-${Date.now()}-${Math.floor(Math.random() * 10000)}`);
+    tempDir = path.join(os.tmpdir(), `task-manager-test-${Date.now()}`);
     await fs.mkdir(tempDir, { recursive: true });
-    testFilePath = path.join(tempDir, 'test-tasks.json');
-    
-    // Initialize the server with the test file path
-    server = new TaskManagerServer(testFilePath);
+    tasksFilePath = path.join(tempDir, "test-tasks.json");
+    server = new TaskManagerServer(tasksFilePath);
   });
 
   afterEach(async () => {
-    // Clean up temp files
-    try {
-      await fs.rm(tempDir, { recursive: true, force: true });
-    } catch (err) {
-      console.error('Error cleaning up temp directory:', err);
-    }
+    await fs.rm(tempDir, { recursive: true, force: true });
   });
 
   describe('Tools Configuration', () => {
@@ -416,6 +408,186 @@ describe('TaskManagerServer', () => {
       const result = await server.approveProjectCompletion(projectId);
       expect(result.status).toBe('error');
       expect(result.message).toContain('Project is already completed');
+    });
+  });
+
+  describe('listProjects', () => {
+    it('should list only open projects', async () => {
+      // Create some projects. One open and one complete
+      const project1 = await server.createProject("Open Project", [{ title: "Task 1", description: "Desc" }]);
+      const project2 = await server.createProject("Completed project", [{ title: "Task 2", description: "Desc" }]);
+      const proj1Id = project1.projectId;
+      const proj2Id = project2.projectId;
+
+      // Complete tasks in project 2
+      const proj2Task = server["data"].projects.find(p => p.projectId === proj2Id)?.tasks[0];
+      if (proj2Task) {
+        proj2Task.status = "done";
+        proj2Task.approved = true;
+        server["data"].projects.find(p => p.projectId === proj2Id)!.completed = true;
+        await server["saveTasks"]();
+      }
+
+      const result = await server.listProjects("open");
+      expect(result.projects.length).toBe(1);
+      expect(result.projects[0].projectId).toBe(proj1Id);
+    });
+
+    it('should list only pending approval projects', async () => {
+      // Create projects and tasks with varying statuses
+      const project1 = await server.createProject("Pending Approval Project", [{ title: "Task 1", description: "Desc" }]);
+      const project2 = await server.createProject("Completed project", [{ title: "Task 2", description: "Desc" }]);
+      const project3 = await server.createProject("In Progress Project", [{ title: "Task 3", description: "Desc" }]);
+
+      // Mark task1 as done but not approved
+      const proj1Task = server["data"].projects.find(p => p.projectId === project1.projectId)?.tasks[0];
+      if (proj1Task) {
+        proj1Task.status = "done";
+        await server["saveTasks"]();
+      }
+
+      // Complete project 2 fully
+      const proj2Task = server["data"].projects.find(p => p.projectId === project2.projectId)?.tasks[0];
+      if (proj2Task) {
+        proj2Task.status = "done";
+        proj2Task.approved = true;
+        server["data"].projects.find(p => p.projectId === project2.projectId)!.completed = true;
+        await server["saveTasks"]();
+      }
+
+      const result = await server.listProjects("pending_approval");
+      expect(result.projects.length).toBe(1);
+      expect(result.projects[0].projectId).toBe(project1.projectId);
+    });
+
+    it('should list only completed projects', async () => {
+      // Create projects with different states
+      const project1 = await server.createProject("Open Project", [{ title: "Task 1", description: "Desc" }]);
+      const project2 = await server.createProject("Completed project", [{ title: "Task 2", description: "Desc" }]);
+      const project3 = await server.createProject("Pending Project", [{ title: "Task 3", description: "Desc" }]);
+
+      // Complete project 2 fully
+      const proj2Task = server["data"].projects.find(p => p.projectId === project2.projectId)?.tasks[0];
+      if (proj2Task) {
+        proj2Task.status = "done";
+        proj2Task.approved = true;
+        server["data"].projects.find(p => p.projectId === project2.projectId)!.completed = true;
+        await server["saveTasks"]();
+      }
+
+      // Mark project 3's task as done but not approved
+      const proj3Task = server["data"].projects.find(p => p.projectId === project3.projectId)?.tasks[0];
+      if (proj3Task) {
+        proj3Task.status = "done";
+        await server["saveTasks"]();
+      }
+
+      const result = await server.listProjects("completed");
+      expect(result.projects.length).toBe(1);
+      expect(result.projects[0].projectId).toBe(project2.projectId);
+    });
+
+    it('should list all projects when state is \'all\'', async () => {
+      // Create projects with different states
+      const project1 = await server.createProject("Open Project", [{ title: "Task 1", description: "Desc" }]);
+      const project2 = await server.createProject("Completed project", [{ title: "Task 2", description: "Desc" }]);
+      const project3 = await server.createProject("Pending Project", [{ title: "Task 3", description: "Desc" }]);
+
+      const result = await server.listProjects("all");
+      expect(result.projects.length).toBe(3);
+    });
+
+    it('should handle empty project list', async () => {
+      const result = await server.listProjects("open");
+      expect(result.projects.length).toBe(0);
+    });
+  });
+
+  describe('listTasks', () => {
+    it('should list tasks across all projects filtered by state', async () => {
+      // Create two projects with tasks in different states
+      const project1 = await server.createProject("Project 1", [
+        { title: "Task 1", description: "Open task" },
+        { title: "Task 2", description: "Done task" }
+      ]);
+      const project2 = await server.createProject("Project 2", [
+        { title: "Task 3", description: "Pending approval task" }
+      ]);
+
+      // Set task states
+      const proj1Tasks = server["data"].projects.find(p => p.projectId === project1.projectId)?.tasks;
+      if (proj1Tasks) {
+        proj1Tasks[1].status = "done";
+        proj1Tasks[1].approved = true;
+      }
+
+      const proj2Tasks = server["data"].projects.find(p => p.projectId === project2.projectId)?.tasks;
+      if (proj2Tasks) {
+        proj2Tasks[0].status = "done";
+      }
+
+      await server["saveTasks"]();
+
+      // Test open tasks
+      const openResult = await server.listTasks(undefined, "open");
+      expect(openResult.tasks!.length).toBe(1);
+      expect(openResult.tasks![0].title).toBe("Task 1");
+
+      // Test pending approval tasks
+      const pendingResult = await server.listTasks(undefined, "pending_approval");
+      expect(pendingResult.tasks!.length).toBe(1);
+      expect(pendingResult.tasks![0].title).toBe("Task 3");
+
+      // Test completed tasks
+      const completedResult = await server.listTasks(undefined, "completed");
+      expect(completedResult.tasks!.length).toBe(1);
+      expect(completedResult.tasks![0].title).toBe("Task 2");
+    });
+
+    it('should list tasks for specific project filtered by state', async () => {
+      // Create a project with tasks in different states
+      const project = await server.createProject("Test Project", [
+        { title: "Task 1", description: "Open task" },
+        { title: "Task 2", description: "Done and approved task" },
+        { title: "Task 3", description: "Done but not approved task" }
+      ]);
+
+      // Set task states
+      const tasks = server["data"].projects.find(p => p.projectId === project.projectId)?.tasks;
+      if (tasks) {
+        tasks[1].status = "done";
+        tasks[1].approved = true;
+        tasks[2].status = "done";
+      }
+
+      await server["saveTasks"]();
+
+      // Test open tasks
+      const openResult = await server.listTasks(project.projectId, "open");
+      expect(openResult.tasks!.length).toBe(1);
+      expect(openResult.tasks![0].title).toBe("Task 1");
+
+      // Test pending approval tasks
+      const pendingResult = await server.listTasks(project.projectId, "pending_approval");
+      expect(pendingResult.tasks!.length).toBe(1);
+      expect(pendingResult.tasks![0].title).toBe("Task 3");
+
+      // Test completed tasks
+      const completedResult = await server.listTasks(project.projectId, "completed");
+      expect(completedResult.tasks!.length).toBe(1);
+      expect(completedResult.tasks![0].title).toBe("Task 2");
+    });
+
+    it('should handle non-existent project ID', async () => {
+      const result = await server.listTasks("non-existent-project", "open");
+      expect(result.status).toBe("error");
+      expect(result.message).toBe("Project not found");
+    });
+
+    it('should handle empty task list', async () => {
+      const project = await server.createProject("Empty Project", []);
+      const result = await server.listTasks(project.projectId, "open");
+      expect(result.tasks!.length).toBe(0);
     });
   });
 }); 

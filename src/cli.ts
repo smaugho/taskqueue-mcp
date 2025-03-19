@@ -240,15 +240,23 @@ program
   .command("list")
   .description("List all projects and their tasks")
   .option('-p, --project <projectId>', 'Show details for a specific project')
+  .option('-s, --state <state>', "Filter by task/project state (open, pending_approval, completed, all)")
   .action(async (options) => {
     try {
+      // Validate state option if provided
+      if (options.state && !['open', 'pending_approval', 'completed', 'all'].includes(options.state)) {
+        console.error(chalk.red(`Invalid state value: ${options.state}`));
+        console.log(chalk.yellow('Valid states are: open, pending_approval, completed, all'));
+        process.exit(1);
+      }
+
       const data = await readData();
       
       if (data.projects.length === 0) {
         console.log(chalk.yellow('No projects found.'));
         return;
       }
-      
+
       if (options.project) {
         // Show details for a specific project
         const project = data.projects.find(p => p.projectId === options.project);
@@ -260,41 +268,96 @@ program
           });
           process.exit(1);
         }
-        
-        console.log(chalk.cyan(`\n📋 Project: ${chalk.bold(project.projectId)}`));
-        console.log(`  - ${chalk.bold('Initial Prompt:')} ${project.initialPrompt}`);
-        console.log(`  - ${chalk.bold('Status:')} ${project.completed ? chalk.green('Completed ✓') : chalk.yellow('In Progress ⟳')}`);
-        
-        console.log(chalk.cyan(`\n📋 Tasks:`));
-        if (project.tasks.length === 0) {
-          console.log(chalk.yellow('  No tasks found for this project.'));
-        } else {
-          project.tasks.forEach(task => {
-            console.log(`  - ${chalk.bold(task.id)}: ${task.title}`);
-            console.log(`    ${chalk.dim('Description:')} ${task.description}`);
-            console.log(`    ${chalk.dim('Status:')} ${task.status === 'done' ? chalk.green('Done ✓') : task.status === 'in progress' ? chalk.yellow('In Progress ⟳') : chalk.blue('Not Started ○')}`);
-            console.log(`    ${chalk.dim('Approved:')} ${task.approved ? chalk.green('Yes ✓') : chalk.red('No ✗')}`);
-            if (task.status === 'done') {
-              console.log(`    ${chalk.dim('Completed Details:')} ${task.completedDetails || chalk.gray("None")}`);
+
+        // Filter tasks by state if specified
+        let tasks = project.tasks;
+        if (options.state && options.state !== "all") {
+          tasks = project.tasks.filter(task => {
+            switch (options.state) {
+              case "open":
+                return task.status !== "done";
+              case "pending_approval":
+                return task.status === "done" && !task.approved;
+              case "completed":
+                return task.status === "done" && task.approved;
+              default:
+                return true;
             }
-            console.log();
           });
+        }
+
+        console.log(chalk.cyan(`\n📋 Project ${chalk.bold(options.project)} details:`));
+        console.log(`  - ${chalk.bold('Initial Prompt:')} ${project.initialPrompt}`);
+        if (project.projectPlan && project.projectPlan !== project.initialPrompt) {
+          console.log(`  - ${chalk.bold('Project Plan:')} ${project.projectPlan}`);
+        }
+        console.log(`  - ${chalk.bold('Status:')} ${project.completed ? chalk.green('Completed ✓') : chalk.yellow('In Progress')}`);
+
+        // Show progress info
+        const totalTasks = project.tasks.length;
+        const completedTasks = project.tasks.filter(t => t.status === "done").length;
+        const approvedTasks = project.tasks.filter(t => t.approved).length;
+        
+        console.log(chalk.cyan(`\n📊 Progress: ${chalk.bold(`${approvedTasks}/${completedTasks}/${totalTasks}`)} (approved/completed/total)`));
+        
+        // Create a progress bar
+        const bar = '▓'.repeat(approvedTasks) + '▒'.repeat(completedTasks - approvedTasks) + '░'.repeat(totalTasks - completedTasks);
+        console.log(`  ${bar}`);
+
+        if (tasks.length > 0) {
+          console.log(chalk.cyan('\n📝 Tasks:'));
+          tasks.forEach(t => {
+            const status = t.status === 'done' ? chalk.green('Done ✓') : t.status === 'in progress' ? chalk.yellow('In Progress ⟳') : chalk.blue('Not Started ○');
+            const approved = t.approved ? chalk.green('Yes ✓') : chalk.red('No ✗');
+            console.log(`  - ${chalk.bold(t.id)}: ${t.title}`);
+            console.log(`    Status: ${status}, Approved: ${approved}`);
+            console.log(`    Description: ${t.description}`);
+            if (t.completedDetails) {
+              console.log(`    Completed Details: ${t.completedDetails}`);
+            }
+          });
+        } else {
+          console.log(chalk.yellow('\nNo tasks match the specified state filter.'));
         }
       } else {
         // List all projects
-        console.log(chalk.cyan(`\n📋 All Projects:`));
-        data.projects.forEach(project => {
-          const totalTasks = project.tasks.length;
-          const completedTasks = project.tasks.filter(t => t.status === "done").length;
-          const approvedTasks = project.tasks.filter(t => t.approved).length;
+        let projectsToList = data.projects;
+
+        if (options.state && options.state !== "all") {
+          projectsToList = data.projects.filter(project => {
+            switch (options.state) {
+              case "open":
+                return !project.completed && project.tasks.some(task => task.status !== "done");
+              case "pending_approval":
+                return project.tasks.some(task => task.status === "done" && !task.approved);
+              case "completed":
+                return project.completed && project.tasks.every(task => task.status === "done" && task.approved);
+              default:
+                return true;
+            }
+          });
+        }
+
+        if (projectsToList.length === 0) {
+          console.log(chalk.yellow('No projects match the specified state filter.'));
+          return;
+        }
+
+        console.log(chalk.cyan('\n📋 Projects List:'));
+        projectsToList.forEach(p => {
+          const totalTasks = p.tasks.length;
+          const completedTasks = p.tasks.filter(t => t.status === "done").length;
+          const approvedTasks = p.tasks.filter(t => t.approved).length;
+          const status = p.completed ? chalk.green('Completed ✓') : chalk.yellow('In Progress');
           
-          console.log(`  - ${chalk.bold(project.projectId)}: ${project.initialPrompt.substring(0, 50)}${project.initialPrompt.length > 50 ? '...' : ''}`);
-          console.log(`    ${chalk.dim('Status:')} ${project.completed ? chalk.green('Completed ✓') : chalk.yellow('In Progress ⟳')}`);
-          console.log(`    ${chalk.dim('Progress:')} ${chalk.bold(`${approvedTasks}/${completedTasks}/${totalTasks}`)} (approved/completed/total)`);
-          console.log();
+          console.log(`\n${chalk.bold(p.projectId)}: ${status}`);
+          console.log(`  Initial Prompt: ${p.initialPrompt.substring(0, 100)}${p.initialPrompt.length > 100 ? '...' : ''}`);
+          console.log(`  Progress: ${chalk.bold(`${approvedTasks}/${completedTasks}/${totalTasks}`)} (approved/completed/total)`);
+          
+          // Create a progress bar
+          const bar = '▓'.repeat(approvedTasks) + '▒'.repeat(completedTasks - approvedTasks) + '░'.repeat(totalTasks - completedTasks);
+          console.log(`  ${bar}`);
         });
-        
-        console.log(chalk.blue(`Use '${chalk.bold('task-manager-cli list -p <projectId>')}' for detailed information about a specific project.`));
       }
     } catch (error) {
       console.error(chalk.red(`An error occurred: ${error instanceof Error ? error.message : String(error)}`));
@@ -302,4 +365,4 @@ program
     }
   });
 
-program.parse(); 
+program.parse(process.argv); 

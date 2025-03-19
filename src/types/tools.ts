@@ -5,10 +5,16 @@ import { Tool } from "@modelcontextprotocol/sdk/types.js";
 // List Projects
 const listProjectsTool: Tool = {
   name: "list_projects",
-  description: "List all projects in the system and their basic information (ID, initial prompt, task counts).",
+  description: "List all projects in the system and their basic information (ID, initial prompt, task counts), optionally filtered by state (open, pending_approval, completed, all).",
   inputSchema: {
     type: "object",
-    properties: {}, // No arguments needed
+    properties: {
+      state: {
+        type: "string",
+        enum: ["open", "pending_approval", "completed", "all"],
+        description: "Filter projects by state. 'open' (any incomplete task), 'pending_approval' (any tasks awaiting approval), 'completed' (all tasks done and approved), or 'all' to skip filtering.",
+      },
+    },
     required: [],
   },
 };
@@ -138,7 +144,7 @@ const finalizeProjectTool: Tool = {
 // List Tasks
 const listTasksTool: Tool = {
   name: "list_tasks",
-  description: "List all tasks, optionally filtered by project ID and/or status.",
+  description: "List all tasks, optionally filtered by project ID and/or state (open, pending_approval, completed, all).",
   inputSchema: {
     type: "object",
     properties: {
@@ -146,13 +152,13 @@ const listTasksTool: Tool = {
         type: "string",
         description: "The ID of the project to list tasks from. If omitted, list all tasks.",
       },
-      status: {
+      state: {
         type: "string",
-        enum: ["not started", "in progress", "done"],
-        description: "Filter tasks by status. If omitted, list all tasks regardless of status.",
+        enum: ["open", "pending_approval", "completed", "all"],
+        description: "Filter tasks by state. 'open' (not started/in progress), 'pending_approval', 'completed', or 'all' to skip filtering.",
       },
     },
-    required: [], // Neither projectId nor status is required, both are optional filters
+    required: [], // Neither projectId nor state is required, both are optional filters
   },
 };
 

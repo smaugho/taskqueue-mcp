@@ -1,7 +1,7 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import * as os from "node:os";
-import { Task, Project, TaskManagerFile } from "../types/index.js";
+import { Task, Project, TaskManagerFile, TaskState } from "../types/index.js";
 
 // Get platform-appropriate app data directory
 const getAppDataDir = () => {
@@ -316,19 +316,81 @@ export class TaskManagerServer {
     return { status: "task_not_found", message: "No such task found" };
   }
 
-  public async listProjects() {
+  public async listProjects(state?: TaskState) {
     await this.loadTasks();
+    let filteredProjects = this.data.projects;
+
+    if (state && state !== "all") {
+      filteredProjects = this.data.projects.filter(proj => {
+        switch (state) {
+          case "open":
+            return !proj.completed && proj.tasks.some(task => task.status !== "done");
+          case "pending_approval":
+            return proj.tasks.some(task => task.status === "done" && !task.approved);
+          case "completed":
+            return proj.completed && proj.tasks.every(task => task.status === "done" && task.approved);
+          default:
+            return true; // Should not happen due to type safety
+        }
+      });
+    }
+
     const projectsList = this.formatProjectsList();
     return {
       status: "projects_listed",
       message: `Current projects in the system:\n${projectsList}`,
-      projects: this.data.projects.map((proj) => ({
+      projects: filteredProjects.map((proj) => ({
         projectId: proj.projectId,
         initialPrompt: proj.initialPrompt,
         totalTasks: proj.tasks.length,
         completedTasks: proj.tasks.filter((t) => t.status === "done").length,
         approvedTasks: proj.tasks.filter((t) => t.approved).length,
       })),
+    };
+  }
+
+  public async listTasks(projectId?: string, state?: TaskState) {
+    await this.loadTasks();
+    let tasks: Task[] = [];
+
+    if (projectId) {
+      const project = this.data.projects.find(p => p.projectId === projectId);
+      if (!project) {
+        return { status: 'error', message: 'Project not found' };
+      }
+      tasks = project.tasks;
+    } else {
+      // Flatten all tasks from all projects if no projectId is given
+      tasks = this.data.projects.flatMap(project => project.tasks);
+    }
+
+    // Apply state filtering
+    let filteredTasks = tasks;
+    if (state && state !== "all") {
+      filteredTasks = tasks.filter(task => {
+        switch (state) {
+          case "open":
+            return task.status === "not started" || task.status === "in progress";
+          case "pending_approval":
+            return task.status === "done" && !task.approved;
+          case "completed":
+            return task.status === "done" && task.approved;
+          default:
+            return true; // Should not happen due to type safety
+        }
+      });
+    }
+
+    return {
+      status: "tasks_listed",
+      message: `Tasks in the system${projectId ? ` for project ${projectId}` : ""}:\n${filteredTasks.length} tasks found.`,
+      tasks: filteredTasks.map(task => ({
+        id: task.id,
+        title: task.title,
+        description: task.description,
+        status: task.status,
+        approved: task.approved
+      }))
     };
   }
 

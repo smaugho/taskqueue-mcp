@@ -29,11 +29,15 @@ export const VALID_STATUS_TRANSITIONS = {
   "done": ["in progress"]
 } as const;
 
+export type TaskState = "open" | "pending_approval" | "completed" | "all";
+
 // Tool schemas
 // Project action schemas
 const ListProjectActionSchema = z.object({
   action: z.literal("list"),
-  arguments: z.object({}).strict()
+  arguments: z.object({
+    state: z.enum(["open", "pending_approval", "completed", "all"]).optional()
+  }).strict()
 });
 
 const CreateProjectActionSchema = z.object({
@@ -74,6 +78,14 @@ const FinalizeActionSchema = z.object({
 });
 
 // Task action schemas
+const ListTaskActionSchema = z.object({
+  action: z.literal("list"),
+  arguments: z.object({
+    projectId: z.string().min(1, "Project ID is required").optional(),
+    state: z.enum(["open", "pending_approval", "completed", "all"]).optional()
+  }).strict()
+});
+
 const ReadTaskActionSchema = z.object({
   action: z.literal("read"),
   arguments: z.object({
@@ -122,6 +134,7 @@ export const ProjectActionSchema = z.discriminatedUnion("action", [
 ]);
 
 export const TaskActionSchema = z.discriminatedUnion("action", [
+  ListTaskActionSchema,
   ReadTaskActionSchema,
   UpdateTaskActionSchema,
   DeleteTaskActionSchema

@@ -368,4 +368,140 @@ describe('TaskManagerServer Integration', () => {
     expect(listedProject?.completedTasks).toBe(2);
     expect(listedProject?.approvedTasks).toBe(2);
   });
+
+  it("should list only pending approval projects", async () => {
+    // Create projects and tasks with varying statuses
+    const project1 = await server.createProject("Pending Approval Project", [{ title: "Task 1", description: "Desc" }]);
+    const project2 = await server.createProject("Completed project", [{ title: "Task 2", description: "Desc" }]);
+
+    // Mark task1 as done but not approved
+    const proj1Task = server["data"].projects.find(p => p.projectId === project1.projectId)?.tasks[0];
+    if (proj1Task) {
+      proj1Task.status = "done";
+      await server["saveTasks"]();
+    }
+
+    // Complete project 2 fully
+    const proj2Task = server["data"].projects.find(p => p.projectId === project2.projectId)?.tasks[0];
+    if (proj2Task) {
+      proj2Task.status = "done";
+      proj2Task.approved = true;
+      server["data"].projects.find(p => p.projectId === project2.projectId)!.completed = true;
+      await server["saveTasks"]();
+    }
+
+    const result = await server.listProjects("pending_approval");
+    expect(result.projects.length).toBe(1);
+    expect(result.projects[0].projectId).toBe(project1.projectId);
+
+    // Verify the task states are correct
+    const tasks = await server.listTasks(project1.projectId, "pending_approval");
+    expect(tasks.tasks!.length).toBe(1);
+    expect(tasks.tasks![0].status).toBe("done");
+    expect(tasks.tasks![0].approved).toBe(false);
+  });
+
+  it("should handle complex project and task state transitions", async () => {
+    // Create a project with multiple tasks
+    const project = await server.createProject("Complex Project", [
+      { title: "Task 1", description: "First task" },
+      { title: "Task 2", description: "Second task" },
+      { title: "Task 3", description: "Third task" }
+    ]);
+
+    // Initially all tasks should be open
+    const initialOpenTasks = await server.listTasks(project.projectId, "open");
+    expect(initialOpenTasks.tasks!.length).toBe(3);
+
+    // Mark first task as done and approved
+    const tasks = server["data"].projects.find(p => p.projectId === project.projectId)?.tasks;
+    if (tasks) {
+      await server.markTaskDone(project.projectId, tasks[0].id);
+      await server.approveTaskCompletion(project.projectId, tasks[0].id);
+    }
+
+    // Should now have 2 open tasks and 1 completed
+    const openTasks = await server.listTasks(project.projectId, "open");
+    expect(openTasks.tasks!.length).toBe(2);
+
+    const completedTasks = await server.listTasks(project.projectId, "completed");
+    expect(completedTasks.tasks!.length).toBe(1);
+
+    // Mark second task as done but not approved
+    if (tasks) {
+      await server.markTaskDone(project.projectId, tasks[1].id);
+    }
+
+    // Should now have 1 open task, 1 pending approval, and 1 completed
+    const finalOpenTasks = await server.listTasks(project.projectId, "open");
+    expect(finalOpenTasks.tasks!.length).toBe(1);
+
+    const pendingTasks = await server.listTasks(project.projectId, "pending_approval");
+    expect(pendingTasks.tasks!.length).toBe(1);
+
+    const finalCompletedTasks = await server.listTasks(project.projectId, "completed");
+    expect(finalCompletedTasks.tasks!.length).toBe(1);
+  });
+
+  it("should handle project completion state correctly", async () => {
+    // Create a project with two tasks
+    const project = await server.createProject("Project to Complete", [
+      { title: "Task 1", description: "First task" },
+      { title: "Task 2", description: "Second task" }
+    ]);
+
+    // Initially project should be open
+    const initialResult = await server.listProjects("open");
+    expect(initialResult.projects.length).toBe(1);
+
+    // Complete and approve all tasks
+    const tasks = server["data"].projects.find(p => p.projectId === project.projectId)?.tasks;
+    if (tasks) {
+      tasks.forEach(task => {
+        task.status = "done";
+        task.approved = true;
+      });
+      server["data"].projects.find(p => p.projectId === project.projectId)!.completed = true;
+      await server["saveTasks"]();
+    }
+
+    // Project should now be completed
+    const completedResult = await server.listProjects("completed");
+    expect(completedResult.projects.length).toBe(1);
+    expect(completedResult.projects[0].projectId).toBe(project.projectId);
+
+    // No projects should be open or pending approval
+    const openResult = await server.listProjects("open");
+    expect(openResult.projects.length).toBe(0);
+
+    const pendingResult = await server.listProjects("pending_approval");
+    expect(pendingResult.projects.length).toBe(0);
+  });
+
+  it("should handle file persistence correctly", async () => {
+    // Create initial data
+    const project = await server.createProject("Persistent Project", [
+      { title: "Task 1", description: "Test task" }
+    ]);
+
+    // Create a new server instance pointing to the same file
+    const newServer = new TaskManagerServer(testFilePath);
+
+    // Verify the data was loaded correctly
+    const result = await newServer.listProjects("open");
+    expect(result.projects.length).toBe(1);
+    expect(result.projects[0].projectId).toBe(project.projectId);
+
+    // Modify task state in new server
+    const tasks = newServer["data"].projects.find(p => p.projectId === project.projectId)?.tasks;
+    if (tasks) {
+      tasks[0].status = "done";
+      await newServer["saveTasks"]();
+    }
+
+    // Create another server instance and verify the changes persisted
+    const thirdServer = new TaskManagerServer(testFilePath);
+    const pendingResult = await thirdServer.listTasks(project.projectId, "pending_approval");
+    expect(pendingResult.tasks!.length).toBe(1);
+  });
 }); 

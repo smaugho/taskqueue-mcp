@@ -12,6 +12,7 @@ import { z } from "zod";
 
 import { TaskManagerServer } from "./src/server/TaskManagerServer.js";
 import { ALL_TOOLS } from "./src/types/tools.js";
+import { TaskState } from "./src/types/index.js";
 
 const DEFAULT_PATH = path.join(os.homedir(), "Documents", "tasks.json");
 const TASK_FILE_PATH = process.env.TASK_MANAGER_FILE_PATH || DEFAULT_PATH;
@@ -49,7 +50,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     switch (name) {
       // Project tools
       case "list_projects": {
-        const result = await taskManagerServer.listProjects();
+        const state = args.state as TaskState | undefined;
+        const result = await taskManagerServer.listProjects(state);
         return {
           content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
         };
@@ -130,12 +132,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       // Task tools
       case "list_tasks": {
-        // No explicit list tasks method, so return a message
+        const projectId = args.projectId ? String(args.projectId) : undefined;
+        const state = args.state as TaskState | undefined;
+        const result = await taskManagerServer.listTasks(projectId, state);
         return {
-          content: [{ type: "text", text: JSON.stringify({ 
-            status: "error", 
-            message: "list_tasks functionality to be implemented in future version"
-          }, null, 2) }],
+          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
         };
       }
 

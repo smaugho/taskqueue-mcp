@@ -282,24 +282,26 @@ This command displays information about all projects in the system or a specific
 
 ```javascript
 // Example of how an LLM would use the create_project tool
-const createProjectResult = await toolManager.callFunction('create_project', {
-  initialPrompt: "Create a website for a small business",
-  projectPlan: "We'll create a responsive website with Home, About, Services, and Contact pages",
-  tasks: [
-    { 
-      title: "Set up project structure", 
-      description: "Create repository and initialize with basic HTML/CSS/JS files" 
-    },
-    { 
-      title: "Design homepage", 
-      description: "Create responsive homepage with navigation and hero section" 
-    },
-    { 
-      title: "Implement about page", 
-      description: "Create about page with company history and team section" 
-    }
+{
+  'create_project': {
+    'initialPrompt': "Create a website for a small business",
+    'projectPlan': "We'll create a responsive website with Home, About, Services, and Contact pages",
+    'tasks': [
+      { 
+        'title': "Set up project structure", 
+        'description': "Create repository and initialize with basic HTML/CSS/JS files" 
+      },
+      { 
+        'title': "Design homepage", 
+        'description': "Create responsive homepage with navigation and hero section" 
+      },
+      { 
+        'title': "Implement about page", 
+        'description': "Create about page with company history and team section" 
+      }
   ]
-});
+}
+}
 
 // Response will include:
 // {
@@ -319,9 +321,11 @@ const createProjectResult = await toolManager.callFunction('create_project', {
 
 ```javascript
 // Example of how an LLM would use the get_next_task tool
-const nextTaskResult = await toolManager.callFunction('get_next_task', {
-  projectId: "proj-1234"
-});
+{
+  'get_next_task': {
+    'projectId': "proj-1234"
+  }
+}
 
 // Response will include:
 // {
@@ -341,11 +345,13 @@ const nextTaskResult = await toolManager.callFunction('get_next_task', {
 
 ```javascript
 // Example of how an LLM would use the mark_task_done tool
-const markDoneResult = await toolManager.callFunction('mark_task_done', {
-  projectId: "proj-1234",
-  taskId: "task-1",
-  completedDetails: "Created repository at github.com/example/business-site and initialized with HTML5 boilerplate, CSS reset, and basic JS structure."  // Required when marking as done
-});
+{
+  'mark_task_done': {
+    'projectId': "proj-1234",
+    'taskId': "task-1",
+    'completedDetails': "Created repository at github.com/example/business-site and initialized with HTML5 boilerplate, CSS reset, and basic JS structure."  // Required when marking as done
+  }
+}
 
 // Response will include:
 // {
@@ -376,9 +382,11 @@ After approval, the LLM can check the task status using `read_task` or get the n
 ```javascript
 // Example of how an LLM would use the finalize_project tool
 // (Called after all tasks are done and approved)
-const finalizeResult = await toolManager.callFunction('finalize_project', {
-  projectId: "proj-1234"
-});
+{
+  'finalize_project': {
+    'projectId': "proj-1234"
+  }
+}
 
 // Response will include:
 // {
