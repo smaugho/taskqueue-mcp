@@ -76,21 +76,35 @@ npm install -g @chriscarrollsmith/mcp-taskmanager
 
 ## Usage
 
-```bash
-npm start
-```
-
-You can also set a custom path for the tasks file:
+This command will start the MCP server:
 
 ```bash
-TASK_MANAGER_FILE_PATH=/path/to/tasks.json npm start
+npx -y @chriscarrollsmith/mcp-taskmanager
+
+# Or, with a custom tasks.json path:
+TASK_MANAGER_FILE_PATH=/path/to/tasks.json npx -y @chriscarrollsmith/mcp-taskmanager
 ```
 
-## Development
+However, usually you will set the tool configuration in Claude Desktop, Cursor, or another MCP client as follows:
+
+```json
+{
+  "tools": {
+    "taskmanager": {
+      "command": "npx",
+      "args": ["-y", "@chriscarrollsmith/mcp-taskmanager"]
+    }
+  }
+}
+```
+
+To use the CLI utility, you can use the following command:
 
 ```bash
-npm run dev
+npx task-manager-cli --help
 ```
+
+This will show the available commands and options.
 
 ## License
 

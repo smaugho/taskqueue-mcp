@@ -1,13 +1,13 @@
 {
 	"name": "@chriscarrollsmith/mcp-taskmanager",
-	"version": "1.0.1",
+	"version": "1.0.4",
 	"description": "Task Manager MCP Server",
 	"author": "Christopher C. Smith (christopher.smith@promptlytechnologies.com)",
 	"main": "dist/index.js",
 	"type": "module",
 	"bin": {
 		"mcp-taskmanager": "dist/index.js",
-		"task-manager-cli": "dist/cli.js"
+		"task-manager-cli": "dist/src/cli.js"
 	},
 	"files": [
 		"dist/index.js",
@@ -20,8 +20,8 @@
 		"start": "node dist/index.js",
 		"dev": "tsc && node dist/index.js",
 		"test": "NODE_OPTIONS=--experimental-vm-modules jest",
-		"approve-task": "node dist/cli.js approve-task",
-		"list-tasks": "node dist/cli.js list"
+		"approve-task": "node dist/src/cli.js approve-task",
+		"list-tasks": "node dist/src/cli.js list"
 	},
 	"repository": {
 		"type": "git",
