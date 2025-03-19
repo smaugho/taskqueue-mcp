@@ -8,21 +8,11 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 import * as os from "node:os";
 import * as path from "node:path";
+import { z } from "zod";
 
 import { TaskManagerServer } from "./server/TaskManagerServer.js";
 import { ALL_TOOLS } from "./types/tools.js";
-import {
-  RequestPlanningSchema,
-  GetNextTaskSchema,
-  MarkTaskDoneSchema,
-  ApproveTaskCompletionSchema,
-  ApproveRequestCompletionSchema,
-  OpenTaskDetailsSchema,
-  ListRequestsSchema,
-  AddTasksToRequestSchema,
-  UpdateTaskSchema,
-  DeleteTaskSchema,
-} from "./types/index.js";
+import { ProjectToolSchema, TaskToolSchema, ProjectActionSchema, TaskActionSchema } from "./types/index.js";
 
 const DEFAULT_PATH = path.join(os.homedir(), "Documents", "tasks.json");
 const TASK_FILE_PATH = process.env.TASK_MANAGER_FILE_PATH || DEFAULT_PATH;
@@ -31,7 +21,7 @@ const TASK_FILE_PATH = process.env.TASK_MANAGER_FILE_PATH || DEFAULT_PATH;
 const server = new Server(
   {
     name: "task-manager-server",
-    version: "2.0.0",
+    version: "3.0.0",
   },
   {
     capabilities: {
@@ -47,144 +37,85 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
   tools: ALL_TOOLS,
 }));
 
+// Create specific schemas for CallToolRequestSchema to validate against our tool schemas
+const ProjectToolCallSchema = CallToolRequestSchema.extend({
+  params: z.object({
+    name: z.literal("project"),
+    arguments: z.object({
+      action: z.string(),
+      arguments: z.any()
+    })
+  })
+});
+
+const TaskToolCallSchema = CallToolRequestSchema.extend({
+  params: z.object({
+    name: z.literal("task"),
+    arguments: z.object({
+      action: z.string(),
+      arguments: z.any()
+    })
+  })
+});
+
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
   try {
     const { name, arguments: args } = request.params;
 
     switch (name) {
-      case "request_planning": {
-        const parsed = RequestPlanningSchema.safeParse(args);
-        if (!parsed.success) {
-          throw new Error(`Invalid arguments: ${parsed.error}`);
+      case "project": {
+        // Validate request against the schema
+        const validationResult = ProjectToolCallSchema.safeParse(request);
+        if (!validationResult.success) {
+          throw new Error(`Invalid request: ${validationResult.error.message}`);
         }
-        const { originalRequest, tasks, splitDetails } = parsed.data;
-        const result = await taskManagerServer.requestPlanning(
-          originalRequest,
-          tasks,
-          splitDetails
-        );
+
+        // Further validate the action and arguments
+        if (!args || typeof args !== 'object') {
+          throw new Error("Invalid arguments: expected object");
+        }
+
+        const { action, arguments: actionArgs } = args;
+        if (!action || typeof action !== 'string') {
+          throw new Error("Missing or invalid 'action' field");
+        }
+
+        // Validate against the specific action schema
+        const actionSchema = ProjectActionSchema.safeParse({ action, arguments: actionArgs });
+        if (!actionSchema.success) {
+          throw new Error(`Invalid action parameters: ${actionSchema.error.message}`);
+        }
+
+        const result = await taskManagerServer.handleProjectTool(action, actionArgs);
         return {
           content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
         };
       }
 
-      case "get_next_task": {
-        const parsed = GetNextTaskSchema.safeParse(args);
-        if (!parsed.success) {
-          throw new Error(`Invalid arguments: ${parsed.error}`);
+      case "task": {
+        // Validate request against the schema
+        const validationResult = TaskToolCallSchema.safeParse(request);
+        if (!validationResult.success) {
+          throw new Error(`Invalid request: ${validationResult.error.message}`);
         }
-        const result = await taskManagerServer.getNextTask(
-          parsed.data.requestId
-        );
-        return {
-          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
-        };
-      }
 
-      case "mark_task_done": {
-        const parsed = MarkTaskDoneSchema.safeParse(args);
-        if (!parsed.success) {
-          throw new Error(`Invalid arguments: ${parsed.error}`);
+        // Further validate the action and arguments
+        if (!args || typeof args !== 'object') {
+          throw new Error("Invalid arguments: expected object");
         }
-        const { requestId, taskId, completedDetails } = parsed.data;
-        const result = await taskManagerServer.markTaskDone(
-          requestId,
-          taskId,
-          completedDetails
-        );
-        return {
-          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
-        };
-      }
 
-      case "approve_task_completion": {
-        const parsed = ApproveTaskCompletionSchema.safeParse(args);
-        if (!parsed.success) {
-          throw new Error(`Invalid arguments: ${parsed.error}`);
+        const { action, arguments: actionArgs } = args;
+        if (!action || typeof action !== 'string') {
+          throw new Error("Missing or invalid 'action' field");
         }
-        const { requestId, taskId } = parsed.data;
-        const result = await taskManagerServer.approveTaskCompletion(
-          requestId,
-          taskId
-        );
-        return {
-          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
-        };
-      }
 
-      case "approve_request_completion": {
-        const parsed = ApproveRequestCompletionSchema.safeParse(args);
-        if (!parsed.success) {
-          throw new Error(`Invalid arguments: ${parsed.error}`);
+        // Validate against the specific action schema
+        const actionSchema = TaskActionSchema.safeParse({ action, arguments: actionArgs });
+        if (!actionSchema.success) {
+          throw new Error(`Invalid action parameters: ${actionSchema.error.message}`);
         }
-        const { requestId } = parsed.data;
-        const result =
-          await taskManagerServer.approveRequestCompletion(requestId);
-        return {
-          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
-        };
-      }
 
-      case "open_task_details": {
-        const parsed = OpenTaskDetailsSchema.safeParse(args);
-        if (!parsed.success) {
-          throw new Error(`Invalid arguments: ${parsed.error}`);
-        }
-        const { taskId } = parsed.data;
-        const result = await taskManagerServer.openTaskDetails(taskId);
-        return {
-          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
-        };
-      }
-
-      case "list_requests": {
-        const parsed = ListRequestsSchema.safeParse(args);
-        if (!parsed.success) {
-          throw new Error(`Invalid arguments: ${parsed.error}`);
-        }
-        const result = await taskManagerServer.listRequests();
-        return {
-          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
-        };
-      }
-
-      case "add_tasks_to_request": {
-        const parsed = AddTasksToRequestSchema.safeParse(args);
-        if (!parsed.success) {
-          throw new Error(`Invalid arguments: ${parsed.error}`);
-        }
-        const { requestId, tasks } = parsed.data;
-        const result = await taskManagerServer.addTasksToRequest(
-          requestId,
-          tasks
-        );
-        return {
-          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
-        };
-      }
-
-      case "update_task": {
-        const parsed = UpdateTaskSchema.safeParse(args);
-        if (!parsed.success) {
-          throw new Error(`Invalid arguments: ${parsed.error}`);
-        }
-        const { requestId, taskId, title, description } = parsed.data;
-        const result = await taskManagerServer.updateTask(requestId, taskId, {
-          title,
-          description,
-        });
-        return {
-          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
-        };
-      }
-
-      case "delete_task": {
-        const parsed = DeleteTaskSchema.safeParse(args);
-        if (!parsed.success) {
-          throw new Error(`Invalid arguments: ${parsed.error}`);
-        }
-        const { requestId, taskId } = parsed.data;
-        const result = await taskManagerServer.deleteTask(requestId, taskId);
+        const result = await taskManagerServer.handleTaskTool(action, actionArgs);
         return {
           content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
         };
@@ -207,7 +138,7 @@ async function runServer() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
   console.error(
-    `Task Manager MCP Server running. Saving tasks at: ${TASK_FILE_PATH}`
+    `Task Manager MCP Server v3.0.0 running. Saving tasks at: ${TASK_FILE_PATH}`
   );
 }
 

@@ -1,90 +1,168 @@
-import { jest, describe, it, expect, beforeEach } from '@jest/globals';
-import { TaskManagerServer } from '../../src/server/TaskManagerServer.js';
 import { ALL_TOOLS } from '../../src/types/tools.js';
-import { mockFs, resetMocks } from '../helpers/mocks.js';
+import { TaskManagerServer } from '../../src/server/TaskManagerServer.js';
+import * as os from 'node:os';
+import * as path from 'node:path';
+import * as fs from 'node:fs/promises';
 
-// Mock fs module
-jest.mock('node:fs/promises', () => ({
-  readFile: () => mockFs.readFile(),
-  writeFile: () => mockFs.writeFile(),
-}));
+describe('TaskManagerServer Integration', () => {
+  let server: TaskManagerServer;
+  let tempDir: string;
+  let testFilePath: string;
 
-// Mock MCP SDK server
-jest.mock('@modelcontextprotocol/sdk/server/index.js', () => ({
-  Server: jest.fn().mockImplementation(() => ({
-    setRequestHandler: jest.fn(),
-    connect: jest.fn().mockReturnValue(Promise.resolve()),
-  })),
-}));
-
-describe('MCP Server Integration', () => {
-  let taskManagerServer: TaskManagerServer;
-
-  beforeEach(() => {
-    resetMocks();
-    taskManagerServer = new TaskManagerServer();
-  });
-
-  it('should initialize server functionality', () => {
-    expect(taskManagerServer).toBeDefined();
-  });
-
-  it('should handle request planning correctly', async () => {
-    const originalRequest = 'Test planning request';
-    const tasks = [
-      { title: 'Task 1', description: 'Description 1' },
-      { title: 'Task 2', description: 'Description 2' },
-    ];
-
-    const result = await taskManagerServer.requestPlanning(originalRequest, tasks);
-
-    expect(result.status).toBe('planned');
-    expect(result.requestId).toBeDefined();
-    expect(result.totalTasks).toBe(2);
-  });
-
-  it('should handle task lifecycle correctly', async () => {
-    // 1. Plan a request with tasks
-    const planResult = await taskManagerServer.requestPlanning('Test lifecycle', [
-      { title: 'Lifecycle Task', description: 'Task for lifecycle testing' },
-    ]);
-    const requestId = planResult.requestId;
-    const taskId = planResult.tasks[0].id;
-
-    // 2. Get the next task
-    const nextTaskResult = await taskManagerServer.getNextTask(requestId);
-    expect(nextTaskResult.status).toBe('next_task');
-    expect(nextTaskResult.task?.id).toBe(taskId);
-
-    // 3. Mark the task as done
-    const markDoneResult = await taskManagerServer.markTaskDone(
-      requestId,
-      taskId,
-      'Completed during lifecycle test'
-    );
-    expect(markDoneResult.status).toBe('task_marked_done');
-
-    // 4. Approve the task completion
-    const approveTaskResult = await taskManagerServer.approveTaskCompletion(requestId, taskId);
-    expect(approveTaskResult.status).toBe('task_approved');
-
-    // 5. All tasks should be done now
-    const allDoneResult = await taskManagerServer.getNextTask(requestId);
-    expect(allDoneResult.status).toBe('all_tasks_done');
-
-    // 6. Approve request completion
-    const approveRequestResult = await taskManagerServer.approveRequestCompletion(requestId);
-    expect(approveRequestResult.status).toBe('request_approved_complete');
-  });
-
-  it('should provide all required tools', () => {
-    expect(ALL_TOOLS.length).toBe(10);
+  beforeEach(async () => {
+    // Create a unique temp directory for each test
+    tempDir = path.join(os.tmpdir(), `task-manager-integration-test-${Date.now()}-${Math.floor(Math.random() * 10000)}`);
+    await fs.mkdir(tempDir, { recursive: true });
+    testFilePath = path.join(tempDir, 'test-tasks.json');
     
-    // Verify tool names and required properties
-    ALL_TOOLS.forEach(tool => {
-      expect(tool.name).toBeDefined();
-      expect(tool.description).toBeDefined();
-      expect(tool.inputSchema).toBeDefined();
-    });
+    // Initialize the server with the test file path
+    server = new TaskManagerServer(testFilePath);
+  });
+
+  afterEach(async () => {
+    // Clean up temp files
+    try {
+      await fs.rm(tempDir, { recursive: true, force: true });
+    } catch (err) {
+      console.error('Error cleaning up temp directory:', err);
+    }
+  });
+
+  it('should have all required tools', () => {
+    const toolNames = ALL_TOOLS.map(tool => tool.name);
+    expect(toolNames).toContain('project');
+    expect(toolNames).toContain('task');
+  });
+
+  it('should handle project tool actions', async () => {
+    const projectTool = ALL_TOOLS.find(tool => tool.name === 'project');
+    expect(projectTool).toBeDefined();
+    expect(projectTool?.inputSchema.required).toContain('action');
+
+    // Test project creation
+    const createResult = await server.handleProjectTool('create', {
+      initialPrompt: 'Test project',
+      projectPlan: 'Test plan',
+      tasks: [
+        {
+          title: 'Test task',
+          description: 'Test description'
+        }
+      ]
+    }) as { 
+      status: string; 
+      projectId: string; 
+      totalTasks: number; 
+      tasks: { id: string; title: string; description: string }[];
+      message: string 
+    };
+
+    expect(createResult.status).toBe('planned');
+    expect(createResult.projectId).toBeDefined();
+    expect(createResult.totalTasks).toBe(1);
+
+    // Test project listing
+    const listResult = await server.handleProjectTool('list', {}) as {
+      status: string;
+      message: string;
+      projects: { projectId: string; initialPrompt: string; totalTasks: number; completedTasks: number; approvedTasks: number }[];
+    };
+    expect(listResult.status).toBe('projects_listed');
+    expect(listResult.projects).toHaveLength(1);
+
+    // Test project deletion
+    const deleteResult = await server.handleProjectTool('delete', {
+      projectId: createResult.projectId
+    }) as { 
+      status: string; 
+      message: string 
+    };
+    expect(deleteResult.status).toBe('project_deleted');
+
+    // Verify deletion
+    const listAfterDelete = await server.handleProjectTool('list', {}) as {
+      status: string;
+      message: string;
+      projects: { projectId: string; initialPrompt: string; totalTasks: number; completedTasks: number; approvedTasks: number }[];
+    };
+    expect(listAfterDelete.projects).toHaveLength(0);
+  });
+
+  it('should handle task tool actions', async () => {
+    // Create a project first
+    const createResult = await server.handleProjectTool('create', {
+      initialPrompt: 'Test project',
+      projectPlan: 'Test plan',
+      tasks: [
+        {
+          title: 'Test task',
+          description: 'Test description'
+        }
+      ]
+    }) as { 
+      status: string; 
+      projectId: string; 
+      totalTasks: number; 
+      tasks: { id: string; title: string; description: string }[];
+      message: string 
+    };
+
+    const projectId = createResult.projectId;
+    const taskId = createResult.tasks[0].id;
+
+    // Test task reading
+    const readResult = await server.handleTaskTool('read', { taskId }) as {
+      status: string;
+      projectId: string;
+      task?: {
+        id: string;
+        title: string;
+        description: string;
+        status: string;
+        approved: boolean;
+        completedDetails: string;
+      };
+      message?: string;
+    };
+    expect(readResult.status).toBe('task_details');
+    expect(readResult.task?.id).toBe(taskId);
+
+    // Test task updating
+    const updateResult = await server.handleTaskTool('update', {
+      projectId,
+      taskId,
+      title: 'Updated task',
+      description: 'Updated description',
+      status: 'in progress'
+    }) as {
+      status: string;
+      message: string;
+      task?: {
+        id: string;
+        title: string;
+        description: string;
+        status: string;
+        approved: boolean;
+        completedDetails: string;
+      };
+    };
+    expect(updateResult.status).toBe('task_updated');
+
+    // Test task deletion
+    const deleteResult = await server.handleTaskTool('delete', {
+      projectId,
+      taskId
+    }) as {
+      status: string;
+      message: string;
+    };
+    expect(deleteResult.status).toBe('task_deleted');
+
+    // Verify deletion
+    const readAfterDelete = await server.handleTaskTool('read', { taskId }) as {
+      status: string;
+      message?: string;
+    };
+    expect(readAfterDelete.status).toBe('task_not_found');
   });
 }); 

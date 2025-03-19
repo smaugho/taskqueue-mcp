@@ -3,17 +3,17 @@ import { TaskManagerFile } from '../../src/types/index.js';
 
 // Mock for file system operations
 export const mockFileData: TaskManagerFile = {
-  requests: [
+  projects: [
     {
-      requestId: 'req-1',
-      originalRequest: 'Test request',
-      splitDetails: 'Test split details',
+      projectId: 'proj-1',
+      initialPrompt: 'Test project',
+      projectPlan: 'Test split details',
       tasks: [
         {
           id: 'task-1',
           title: 'Task 1',
           description: 'Description for task 1',
-          done: false,
+          status: 'not started',
           approved: false,
           completedDetails: '',
         },
@@ -21,7 +21,7 @@ export const mockFileData: TaskManagerFile = {
           id: 'task-2',
           title: 'Task 2',
           description: 'Description for task 2',
-          done: true,
+          status: 'done',
           approved: true,
           completedDetails: 'Task completed',
         },
@@ -41,4 +41,25 @@ export const mockFs = {
 export function resetMocks() {
   mockFs.readFile.mockClear();
   mockFs.writeFile.mockClear();
-} 
+}
+
+export const mockTaskManagerData = {
+  projects: [
+    {
+      projectId: 'proj-1',
+      initialPrompt: 'Test project',
+      projectPlan: 'Test project plan',
+      tasks: [
+        {
+          id: 'task-1',
+          title: 'Test task 1',
+          description: 'Test description 1',
+          status: 'not started',
+          approved: false,
+          completedDetails: ''
+        }
+      ],
+      completed: false
+    }
+  ]
+}; 

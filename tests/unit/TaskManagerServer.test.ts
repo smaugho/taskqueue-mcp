@@ -1,206 +1,176 @@
-import { jest, describe, it, expect, beforeEach } from '@jest/globals';
+import { describe, it, expect } from '@jest/globals';
+import { ALL_TOOLS } from '../../src/types/tools.js';
+import { VALID_STATUS_TRANSITIONS } from '../../src/types/index.js';
 import { TaskManagerServer } from '../../src/server/TaskManagerServer.js';
-import { mockFs, mockFileData, resetMocks } from '../helpers/mocks.js';
-
-// Mock fs module
-jest.mock('node:fs/promises', () => ({
-  readFile: () => mockFs.readFile(),
-  writeFile: () => mockFs.writeFile(),
-}));
+import { mockTaskManagerData } from '../helpers/mocks.js';
+import * as os from 'node:os';
+import * as path from 'node:path';
+import * as fs from 'node:fs/promises';
 
 describe('TaskManagerServer', () => {
-  let taskManagerServer: TaskManagerServer;
+  let server: TaskManagerServer;
+  let tempDir: string;
+  let testFilePath: string;
 
-  beforeEach(() => {
-    resetMocks();
-    taskManagerServer = new TaskManagerServer();
+  beforeEach(async () => {
+    // Create a unique temp directory for each test
+    tempDir = path.join(os.tmpdir(), `task-manager-test-${Date.now()}-${Math.floor(Math.random() * 10000)}`);
+    await fs.mkdir(tempDir, { recursive: true });
+    testFilePath = path.join(tempDir, 'test-tasks.json');
+    
+    // Initialize the server with the test file path
+    server = new TaskManagerServer(testFilePath);
   });
 
-  describe('requestPlanning', () => {
-    it('should create a new request with tasks', async () => {
-      const originalRequest = 'Test planning request';
-      const tasks = [
-        { title: 'Task 1', description: 'Description 1' },
-        { title: 'Task 2', description: 'Description 2' },
-      ];
-
-      const result = await taskManagerServer.requestPlanning(originalRequest, tasks);
-
-      expect(result.status).toBe('planned');
-      expect(result.requestId).toBeDefined();
-      expect(result.totalTasks).toBe(2);
-      expect(result.tasks.length).toBe(2);
-      expect(mockFs.writeFile).toHaveBeenCalled();
-    });
+  afterEach(async () => {
+    // Clean up temp files
+    try {
+      await fs.rm(tempDir, { recursive: true, force: true });
+    } catch (err) {
+      console.error('Error cleaning up temp directory:', err);
+    }
   });
 
-  describe('getNextTask', () => {
-    it('should retrieve the next undone task', async () => {
-      const result = await taskManagerServer.getNextTask('req-1');
-
-      expect(result.status).toBe('next_task');
-      expect(result.task).toBeDefined();
-      expect(result.task?.id).toBe('task-1');
+  describe('Tools Configuration', () => {
+    it('should have the required tools', () => {
+      expect(ALL_TOOLS.length).toBe(2);
+      
+      const toolNames = ALL_TOOLS.map(tool => tool.name);
+      expect(toolNames).toContain('project');
+      expect(toolNames).toContain('task');
     });
-
-    it('should return error for non-existent request', async () => {
-      const result = await taskManagerServer.getNextTask('non-existent-req');
-
-      expect(result.status).toBe('error');
-      expect(result.message).toContain('Request not found');
-    });
-  });
-
-  describe('markTaskDone', () => {
-    it('should mark a task as done', async () => {
-      const result = await taskManagerServer.markTaskDone('req-1', 'task-1', 'Completed successfully');
-
-      expect(result.status).toBe('task_marked_done');
-      expect(result.task).toBeDefined();
-      expect(mockFs.writeFile).toHaveBeenCalled();
-    });
-
-    it('should return error for non-existent task', async () => {
-      const result = await taskManagerServer.markTaskDone('req-1', 'non-existent-task', '');
-
-      expect(result.status).toBe('error');
-      expect(result.message).toContain('Task not found');
+    
+    it('should have proper tool schemas', () => {
+      ALL_TOOLS.forEach(tool => {
+        expect(tool).toHaveProperty('name');
+        expect(tool).toHaveProperty('description');
+        expect(tool).toHaveProperty('inputSchema');
+        expect(tool.inputSchema).toHaveProperty('type', 'object');
+      });
     });
   });
-
-  describe('approveTaskCompletion', () => {
-    it('should approve a completed task', async () => {
-      // First mark the task as done
-      await taskManagerServer.markTaskDone('req-1', 'task-1', '');
-      const result = await taskManagerServer.approveTaskCompletion('req-1', 'task-1');
-
-      expect(result.status).toBe('task_approved');
-      expect(result.task).toBeDefined();
-      expect(result.task?.approved).toBeTruthy();
-      expect(mockFs.writeFile).toHaveBeenCalled();
+  
+  describe('Status Transition Rules', () => {
+    it('should define valid transitions from not started status', () => {
+      expect(VALID_STATUS_TRANSITIONS['not started']).toEqual(['in progress']);
     });
-
-    it('should return error if task not done', async () => {
-      // Using a fresh instance where task-1 is not marked done
-      taskManagerServer = new TaskManagerServer();
-      const result = await taskManagerServer.approveTaskCompletion('req-1', 'task-1');
-
-      expect(result.status).toBe('error');
-      expect(result.message).toContain('Task not done yet');
+    
+    it('should define valid transitions from in progress status', () => {
+      expect(VALID_STATUS_TRANSITIONS['in progress']).toContain('done');
+      expect(VALID_STATUS_TRANSITIONS['in progress']).toContain('not started');
+      expect(VALID_STATUS_TRANSITIONS['in progress'].length).toBe(2);
+    });
+    
+    it('should define valid transitions from done status', () => {
+      expect(VALID_STATUS_TRANSITIONS['done']).toEqual(['in progress']);
+    });
+    
+    it('should not allow direct transition from not started to done', () => {
+      const notStartedTransitions = VALID_STATUS_TRANSITIONS['not started'];
+      expect(notStartedTransitions).not.toContain('done');
     });
   });
 
-  describe('approveRequestCompletion', () => {
-    it('should mark a request as completed when all tasks are done and approved', async () => {
-      // Setup: Mark all tasks as done and approved
-      await taskManagerServer.markTaskDone('req-1', 'task-1', '');
-      await taskManagerServer.approveTaskCompletion('req-1', 'task-1');
-      // Task 2 is already done and approved in our mock
-
-      const result = await taskManagerServer.approveRequestCompletion('req-1');
-
-      expect(result.status).toBe('request_approved_complete');
-      expect(mockFs.writeFile).toHaveBeenCalled();
-    });
-
-    it('should return error if not all tasks are done', async () => {
-      const result = await taskManagerServer.approveRequestCompletion('req-1');
-
-      expect(result.status).toBe('error');
-      expect(result.message).toContain('Not all tasks are done');
-    });
+  it('should have all required tools', () => {
+    const toolNames = ALL_TOOLS.map(tool => tool.name);
+    expect(toolNames).toContain('project');
   });
 
-  describe('listRequests', () => {
-    it('should list all requests', async () => {
-      const result = await taskManagerServer.listRequests();
+  it('should handle project creation', async () => {
+    const result = await server.handleProjectTool('create', {
+      initialPrompt: 'Test project',
+      projectPlan: 'Test plan',
+      tasks: [
+        {
+          title: 'Test task',
+          description: 'Test description'
+        }
+      ]
+    }) as { status: string; projectId: string; totalTasks: number; tasks: any[]; message: string };
 
-      expect(result.status).toBe('requests_listed');
-      expect(result.requests).toBeDefined();
-      expect(result.requests.length).toBe(1);
-      expect(result.requests[0].requestId).toBe('req-1');
-    });
+    expect(result.status).toBe('planned');
+    expect(result.projectId).toBeDefined();
+    expect(result.totalTasks).toBe(1);
   });
 
-  describe('addTasksToRequest', () => {
-    it('should add new tasks to an existing request', async () => {
-      const tasks = [
-        { title: 'New Task 1', description: 'New Description 1' },
-        { title: 'New Task 2', description: 'New Description 2' },
-      ];
-
-      const result = await taskManagerServer.addTasksToRequest('req-1', tasks);
-
-      expect(result.status).toBe('tasks_added');
-      expect(result.newTasks).toBeDefined();
-      expect(result.newTasks?.length).toBe(2);
-      expect(mockFs.writeFile).toHaveBeenCalled();
+  it('should handle project listing', async () => {
+    // Create a project first
+    await server.handleProjectTool('create', {
+      initialPrompt: 'Test project',
+      projectPlan: 'Test plan',
+      tasks: [
+        {
+          title: 'Test task',
+          description: 'Test description'
+        }
+      ]
     });
 
-    it('should return error for non-existent request', async () => {
-      const tasks = [{ title: 'Task', description: 'Description' }];
-      const result = await taskManagerServer.addTasksToRequest('non-existent-req', tasks);
-
-      expect(result.status).toBe('error');
-      expect(result.message).toContain('Request not found');
-    });
+    const result = await server.handleProjectTool('list', {}) as { status: string; projects: any[]; message: string };
+    expect(result.status).toBe('projects_listed');
+    expect(result.projects).toHaveLength(1);
   });
 
-  describe('updateTask', () => {
-    it('should update a task\'s title and description', async () => {
-      const updates = {
-        title: 'Updated Title',
-        description: 'Updated Description',
-      };
+  it('should handle project deletion', async () => {
+    // Create a project first
+    const createResult = await server.handleProjectTool('create', {
+      initialPrompt: 'Test project',
+      projectPlan: 'Test plan',
+      tasks: [
+        {
+          title: 'Test task',
+          description: 'Test description'
+        }
+      ]
+    }) as { status: string; projectId: string; totalTasks: number; tasks: any[]; message: string };
 
-      const result = await taskManagerServer.updateTask('req-1', 'task-1', updates);
+    const result = await server.handleProjectTool('delete', {
+      projectId: createResult.projectId
+    }) as { status: string; message: string };
 
-      expect(result.status).toBe('task_updated');
-      expect(result.task).toBeDefined();
-      expect(result.task?.title).toBe('Updated Title');
-      expect(result.task?.description).toBe('Updated Description');
-      expect(mockFs.writeFile).toHaveBeenCalled();
-    });
-
-    it('should return error for completed task', async () => {
-      const updates = { title: 'Updated' };
-      const result = await taskManagerServer.updateTask('req-1', 'task-2', updates);
-
-      expect(result.status).toBe('error');
-      expect(result.message).toContain('Cannot update completed task');
-    });
+    expect(result.status).toBe('project_deleted');
+    
+    // Verify deletion
+    const listResult = await server.handleProjectTool('list', {}) as { status: string; projects: any[]; message: string };
+    expect(listResult.projects).toHaveLength(0);
   });
 
-  describe('deleteTask', () => {
-    it('should delete a task from a request', async () => {
-      const result = await taskManagerServer.deleteTask('req-1', 'task-1');
+  it('should handle task operations', async () => {
+    // Create a project first
+    const createResult = await server.handleProjectTool('create', {
+      initialPrompt: 'Test project',
+      projectPlan: 'Test plan',
+      tasks: [
+        {
+          title: 'Test task',
+          description: 'Test description'
+        }
+      ]
+    }) as { status: string; projectId: string; totalTasks: number; tasks: { id: string }[]; message: string };
 
-      expect(result.status).toBe('task_deleted');
-      expect(mockFs.writeFile).toHaveBeenCalled();
-    });
+    const projectId = createResult.projectId;
+    const taskId = createResult.tasks[0].id;
 
-    it('should return error for completed task', async () => {
-      const result = await taskManagerServer.deleteTask('req-1', 'task-2');
+    // Test task reading
+    const readResult = await server.handleTaskTool('read', { taskId }) as { status: string; task: { id: string }; message: string };
+    expect(readResult.status).toBe('task_details');
+    expect(readResult.task.id).toBe(taskId);
 
-      expect(result.status).toBe('error');
-      expect(result.message).toContain('Cannot delete completed task');
-    });
-  });
+    // Test task updating
+    const updateResult = await server.handleTaskTool('update', {
+      projectId,
+      taskId,
+      title: 'Updated task',
+      description: 'Updated description',
+      status: 'in progress'
+    }) as { status: string; message: string };
+    expect(updateResult.status).toBe('task_updated');
 
-  describe('openTaskDetails', () => {
-    it('should return details for a specific task', async () => {
-      const result = await taskManagerServer.openTaskDetails('task-1');
-
-      expect(result.status).toBe('task_details');
-      expect(result.task).toBeDefined();
-      expect(result.task?.id).toBe('task-1');
-      expect(result.requestId).toBe('req-1');
-    });
-
-    it('should return not found for non-existent task', async () => {
-      const result = await taskManagerServer.openTaskDetails('non-existent-task');
-
-      expect(result.status).toBe('task_not_found');
-    });
+    // Test task deletion
+    const deleteResult = await server.handleTaskTool('delete', {
+      projectId,
+      taskId
+    }) as { status: string; message: string };
+    expect(deleteResult.status).toBe('task_deleted');
   });
 }); 
