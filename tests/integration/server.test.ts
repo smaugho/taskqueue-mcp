@@ -3,6 +3,7 @@ import { TaskManagerServer } from '../../src/server/TaskManagerServer.js';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import * as fs from 'node:fs/promises';
+import { Task } from '../../src/types/index.js';
 
 describe('TaskManagerServer Integration', () => {
   let server: TaskManagerServer;
@@ -121,15 +122,13 @@ describe('TaskManagerServer Integration', () => {
     }
 
     // Test task updating
-    const updateResult = await server.updateTask(
-      projectId,
-      taskId,
-      {
-        title: 'Updated task',
-        description: 'Updated description'
-      }
-    );
-    expect(updateResult.status).toBe('task_updated');
+    const updatedTask = await server.updateTask(projectId, taskId, {
+      title: "Updated task",
+      description: "Updated description"
+    });
+    expect(updatedTask.title).toBe("Updated task");
+    expect(updatedTask.description).toBe("Updated description");
+    expect(updatedTask.status).toBe("not started");
     
     // Also update the status directly 
     const task = server["data"].projects.find(p => p.projectId === projectId)?.tasks.find(t => t.id === taskId);
@@ -503,5 +502,92 @@ describe('TaskManagerServer Integration', () => {
     const thirdServer = new TaskManagerServer(testFilePath);
     const pendingResult = await thirdServer.listTasks(project.projectId, "pending_approval");
     expect(pendingResult.tasks!.length).toBe(1);
+  });
+
+  it("should handle tool/rule recommendations end-to-end", async () => {
+    const server = new TaskManagerServer(testFilePath);
+    
+    // Create a project with tasks that have recommendations
+    const { projectId } = await server.createProject("Test Project", [
+      {
+        title: "Task with Recommendations",
+        description: "Test Description",
+        toolRecommendations: "Use tool A",
+        ruleRecommendations: "Review rule B"
+      },
+      {
+        title: "Task without Recommendations",
+        description: "Another task"
+      }
+    ]);
+
+    // Verify initial state
+    const tasksResponse = await server.listTasks(projectId);
+    if (!('tasks' in tasksResponse) || !tasksResponse.tasks?.length) {
+      throw new Error('Expected tasks in response');
+    }
+    const tasks = tasksResponse.tasks as Task[];
+    
+    const taskWithRecs = tasks.find(t => t.title === "Task with Recommendations");
+    const taskWithoutRecs = tasks.find(t => t.title === "Task without Recommendations");
+    
+    expect(taskWithRecs).toBeDefined();
+    expect(taskWithoutRecs).toBeDefined();
+    
+    if (taskWithRecs) {
+      expect(taskWithRecs.toolRecommendations).toBe("Use tool A");
+      expect(taskWithRecs.ruleRecommendations).toBe("Review rule B");
+    }
+    
+    if (taskWithoutRecs) {
+      expect(taskWithoutRecs.toolRecommendations).toBeUndefined();
+      expect(taskWithoutRecs.ruleRecommendations).toBeUndefined();
+    }
+
+    // Update task recommendations
+    if (taskWithoutRecs) {
+      const updatedTask = await server.updateTask(projectId, taskWithoutRecs.id, {
+        toolRecommendations: "Use tool X",
+        ruleRecommendations: "Review rule Y"
+      });
+
+      expect(updatedTask.toolRecommendations).toBe("Use tool X");
+      expect(updatedTask.ruleRecommendations).toBe("Review rule Y");
+
+      // Verify the update persisted
+      const updatedTasksResponse = await server.listTasks(projectId);
+      if (!('tasks' in updatedTasksResponse) || !updatedTasksResponse.tasks?.length) {
+        throw new Error('Expected tasks in response');
+      }
+      const updatedTasks = updatedTasksResponse.tasks as Task[];
+      const verifyTask = updatedTasks.find(t => t.id === taskWithoutRecs.id);
+      expect(verifyTask).toBeDefined();
+      if (verifyTask) {
+        expect(verifyTask.toolRecommendations).toBe("Use tool X");
+        expect(verifyTask.ruleRecommendations).toBe("Review rule Y");
+      }
+    }
+
+    // Add new tasks with recommendations
+    await server.addTasksToProject(projectId, [
+      {
+        title: "New Task",
+        description: "With recommendations",
+        toolRecommendations: "Use tool C",
+        ruleRecommendations: "Review rule D"
+      }
+    ]);
+
+    const finalTasksResponse = await server.listTasks(projectId);
+    if (!('tasks' in finalTasksResponse) || !finalTasksResponse.tasks?.length) {
+      throw new Error('Expected tasks in response');
+    }
+    const finalTasks = finalTasksResponse.tasks as Task[];
+    const newTask = finalTasks.find(t => t.title === "New Task");
+    expect(newTask).toBeDefined();
+    if (newTask) {
+      expect(newTask.toolRecommendations).toBe("Use tool C");
+      expect(newTask.ruleRecommendations).toBe("Review rule D");
+    }
   });
 }); 

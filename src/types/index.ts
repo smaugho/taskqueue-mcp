@@ -8,6 +8,8 @@ export interface Task {
   status: "not started" | "in progress" | "done";
   approved: boolean;
   completedDetails: string;
+  toolRecommendations?: string;
+  ruleRecommendations?: string;
 }
 
 export interface Project {

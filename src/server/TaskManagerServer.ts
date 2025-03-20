@@ -31,10 +31,11 @@ export class TaskManagerServer {
   private taskCounter = 0;
   private data: TaskManagerFile = { projects: [] };
   private filePath: string;
+  private initialized: Promise<void>;
 
   constructor(testFilePath?: string) {
     this.filePath = testFilePath || TASK_FILE_PATH;
-    this.loadTasks();
+    this.initialized = this.loadTasks();
   }
 
   private async loadTasks() {
@@ -66,6 +67,10 @@ export class TaskManagerServer {
     }
   }
 
+  private async ensureInitialized() {
+    await this.initialized;
+  }
+
   private async saveTasks() {
     try {
       // Ensure directory exists before writing
@@ -91,13 +96,15 @@ export class TaskManagerServer {
     if (!proj) return "Project not found";
 
     let table = "\nProgress Status:\n";
-    table += "| Task ID | Title | Description | Status | Approval |\n";
-    table += "|----------|----------|------|------|----------|\n";
+    table += "| Task ID | Title | Description | Status | Approval | Tools | Rules |\n";
+    table += "|----------|----------|------|------|----------|--------|--------|\n";
 
     for (const task of proj.tasks) {
       const status = task.status === "done" ? "✅ Done" : (task.status === "in progress" ? "🔄 In Progress" : "⏳ Not Started");
       const approved = task.approved ? "✅ Approved" : "⏳ Pending";
-      table += `| ${task.id} | ${task.title} | ${task.description} | ${status} | ${approved} |\n`;
+      const tools = task.toolRecommendations ? "✓" : "-";
+      const rules = task.ruleRecommendations ? "✓" : "-";
+      table += `| ${task.id} | ${task.title} | ${task.description} | ${status} | ${approved} | ${tools} | ${rules} |\n`;
     }
 
     return table;
@@ -122,10 +129,10 @@ export class TaskManagerServer {
 
   public async createProject(
     initialPrompt: string,
-    tasks: { title: string; description: string }[],
+    tasks: { title: string; description: string; toolRecommendations?: string; ruleRecommendations?: string }[],
     projectPlan?: string
   ) {
-    await this.loadTasks();
+    await this.ensureInitialized();
     this.projectCounter += 1;
     const projectId = `proj-${this.projectCounter}`;
 
@@ -139,6 +146,8 @@ export class TaskManagerServer {
         status: "not started",
         approved: false,
         completedDetails: "",
+        toolRecommendations: taskDef.toolRecommendations,
+        ruleRecommendations: taskDef.ruleRecommendations,
       });
     }
 
@@ -168,7 +177,7 @@ export class TaskManagerServer {
   }
 
   public async getNextTask(projectId: string) {
-    await this.loadTasks();
+    await this.ensureInitialized();
     const proj = this.data.projects.find((p) => p.projectId === projectId);
     if (!proj) {
       return { status: "error", message: "Project not found" };
@@ -210,7 +219,7 @@ export class TaskManagerServer {
     taskId: string,
     completedDetails?: string
   ) {
-    await this.loadTasks();
+    await this.ensureInitialized();
     const proj = this.data.projects.find((p) => p.projectId === projectId);
     if (!proj) return { status: "error", message: "Project not found" };
     const task = proj.tasks.find((t) => t.id === taskId);
@@ -238,7 +247,7 @@ export class TaskManagerServer {
   }
 
   public async approveTaskCompletion(projectId: string, taskId: string) {
-    await this.loadTasks();
+    await this.ensureInitialized();
     const proj = this.data.projects.find((p) => p.projectId === projectId);
     if (!proj) return { status: "error", message: "Project not found" };
     const task = proj.tasks.find((t) => t.id === taskId);
@@ -263,7 +272,7 @@ export class TaskManagerServer {
   }
 
   public async approveProjectCompletion(projectId: string) {
-    await this.loadTasks();
+    await this.ensureInitialized();
     const proj = this.data.projects.find((p) => p.projectId === projectId);
     if (!proj) return { status: "error", message: "Project not found" };
 
@@ -292,7 +301,7 @@ export class TaskManagerServer {
   }
 
   public async openTaskDetails(taskId: string) {
-    await this.loadTasks();
+    await this.ensureInitialized();
     for (const proj of this.data.projects) {
       const target = proj.tasks.find((t) => t.id === taskId);
       if (target) {
@@ -317,18 +326,19 @@ export class TaskManagerServer {
   }
 
   public async listProjects(state?: TaskState) {
-    await this.loadTasks();
-    let filteredProjects = this.data.projects;
+    await this.ensureInitialized();
+
+    let filteredProjects = [...this.data.projects];
 
     if (state && state !== "all") {
-      filteredProjects = this.data.projects.filter(proj => {
+      filteredProjects = filteredProjects.filter((proj) => {
         switch (state) {
           case "open":
-            return !proj.completed && proj.tasks.some(task => task.status !== "done");
+            return !proj.completed && proj.tasks.some((task) => task.status !== "done");
           case "pending_approval":
-            return proj.tasks.some(task => task.status === "done" && !task.approved);
+            return proj.tasks.some((task) => task.status === "done" && !task.approved);
           case "completed":
-            return proj.completed && proj.tasks.every(task => task.status === "done" && task.approved);
+            return proj.completed && proj.tasks.every((task) => task.status === "done" && task.approved);
           default:
             return true; // Should not happen due to type safety
         }
@@ -343,34 +353,37 @@ export class TaskManagerServer {
         projectId: proj.projectId,
         initialPrompt: proj.initialPrompt,
         totalTasks: proj.tasks.length,
-        completedTasks: proj.tasks.filter((t) => t.status === "done").length,
-        approvedTasks: proj.tasks.filter((t) => t.approved).length,
+        completedTasks: proj.tasks.filter((task) => task.status === "done").length,
+        approvedTasks: proj.tasks.filter((task) => task.approved).length,
       })),
     };
   }
 
   public async listTasks(projectId?: string, state?: TaskState) {
-    await this.loadTasks();
-    let tasks: Task[] = [];
-
+    await this.ensureInitialized();
+    
+    // If projectId is provided, verify the project exists
     if (projectId) {
-      const project = this.data.projects.find(p => p.projectId === projectId);
+      const project = this.data.projects.find((p) => p.projectId === projectId);
       if (!project) {
-        return { status: 'error', message: 'Project not found' };
+        return {
+          status: "error",
+          message: "Project not found"
+        };
       }
-      tasks = project.tasks;
-    } else {
-      // Flatten all tasks from all projects if no projectId is given
-      tasks = this.data.projects.flatMap(project => project.tasks);
     }
 
+    // Flatten all tasks from all projects if no projectId is given
+    let tasks = projectId
+      ? this.data.projects.find((p) => p.projectId === projectId)?.tasks || []
+      : this.data.projects.flatMap((p) => p.tasks);
+
     // Apply state filtering
-    let filteredTasks = tasks;
     if (state && state !== "all") {
-      filteredTasks = tasks.filter(task => {
+      tasks = tasks.filter((task) => {
         switch (state) {
           case "open":
-            return task.status === "not started" || task.status === "in progress";
+            return task.status !== "done";
           case "pending_approval":
             return task.status === "done" && !task.approved;
           case "completed":
@@ -383,29 +396,29 @@ export class TaskManagerServer {
 
     return {
       status: "tasks_listed",
-      message: `Tasks in the system${projectId ? ` for project ${projectId}` : ""}:\n${filteredTasks.length} tasks found.`,
-      tasks: filteredTasks.map(task => ({
+      message: `Tasks in the system${projectId ? ` for project ${projectId}` : ""}:\n${tasks.length} tasks found.`,
+      tasks: tasks.map(task => ({
         id: task.id,
         title: task.title,
         description: task.description,
         status: task.status,
-        approved: task.approved
+        approved: task.approved,
+        completedDetails: task.completedDetails,
+        toolRecommendations: task.toolRecommendations,
+        ruleRecommendations: task.ruleRecommendations
       }))
     };
   }
 
   public async addTasksToProject(
     projectId: string,
-    tasks: { title: string; description: string }[]
+    tasks: { title: string; description: string; toolRecommendations?: string; ruleRecommendations?: string }[]
   ) {
-    await this.loadTasks();
+    await this.ensureInitialized();
     const proj = this.data.projects.find((p) => p.projectId === projectId);
-    if (!proj) return { status: "error", message: "Project not found" };
-    if (proj.completed)
-      return {
-        status: "error",
-        message: "Cannot add tasks to completed project",
-      };
+    if (!proj) {
+      return { status: "error", message: "Project not found" };
+    }
 
     const newTasks: Task[] = [];
     for (const taskDef of tasks) {
@@ -417,6 +430,8 @@ export class TaskManagerServer {
         status: "not started",
         approved: false,
         completedDetails: "",
+        toolRecommendations: taskDef.toolRecommendations,
+        ruleRecommendations: taskDef.ruleRecommendations,
       });
     }
 
@@ -438,36 +453,33 @@ export class TaskManagerServer {
   public async updateTask(
     projectId: string,
     taskId: string,
-    updates: { title?: string; description?: string }
+    updates: {
+      title?: string;
+      description?: string;
+      toolRecommendations?: string;
+      ruleRecommendations?: string;
+    }
   ) {
-    await this.loadTasks();
-    const proj = this.data.projects.find((p) => p.projectId === projectId);
-    if (!proj) return { status: "error", message: "Project not found" };
+    await this.ensureInitialized();
+    const project = this.data.projects.find((p) => p.projectId === projectId);
+    if (!project) {
+      throw new Error(`Project not found: ${projectId}`);
+    }
 
-    const task = proj.tasks.find((t) => t.id === taskId);
-    if (!task) return { status: "error", message: "Task not found" };
-    if (task.status === "done")
-      return { status: "error", message: "Cannot update completed task" };
+    const taskIndex = project.tasks.findIndex((t) => t.id === taskId);
+    if (taskIndex === -1) {
+      throw new Error(`Task not found: ${taskId}`);
+    }
 
-    if (updates.title) task.title = updates.title;
-    if (updates.description) task.description = updates.description;
+    // Update the task with the provided updates
+    project.tasks[taskIndex] = { ...project.tasks[taskIndex], ...updates };
 
     await this.saveTasks();
-
-    const progressTable = this.formatTaskProgressTable(projectId);
-    return {
-      status: "task_updated",
-      message: `Task ${taskId} has been updated.\n${progressTable}`,
-      task: {
-        id: task.id,
-        title: task.title,
-        description: task.description,
-      },
-    };
+    return project.tasks[taskIndex];
   }
 
   public async deleteTask(projectId: string, taskId: string) {
-    await this.loadTasks();
+    await this.ensureInitialized();
     const proj = this.data.projects.find((p) => p.projectId === projectId);
     if (!proj) return { status: "error", message: "Project not found" };
 

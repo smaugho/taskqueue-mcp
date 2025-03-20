@@ -8,6 +8,33 @@ interface SchemaProperty {
   description?: string;
 }
 
+interface ToolInputSchema {
+  type: string;
+  properties: Record<string, SchemaProperty>;
+  required?: string[];
+}
+
+interface TaskItemSchema {
+  type: string;
+  properties: Record<string, SchemaProperty>;
+  required: string[];
+}
+
+interface TasksInputSchema {
+  type: string;
+  properties: {
+    tasks: {
+      type: string;
+      description: string;
+      items: {
+        type: string;
+        properties: Record<string, SchemaProperty>;
+        required: string[];
+      };
+    };
+  };
+}
+
 describe('Tools', () => {
   it('should have all required project tools', () => {
     const toolNames = ALL_TOOLS.map(tool => tool.name);
@@ -115,6 +142,86 @@ describe('Tools', () => {
   it('should enforce a consistent naming convention for tools', () => {
     ALL_TOOLS.forEach(tool => {
       expect(tool.name).toMatch(/^[a-z]+(_[a-z]+)*$/);
+    });
+  });
+
+  describe("Tool Schemas", () => {
+    it("should include tool and rule recommendations in create_task tool", () => {
+      const createTaskTool = ALL_TOOLS.find((tool) => tool.name === "create_task");
+      expect(createTaskTool).toBeDefined();
+
+      const schema = createTaskTool!.inputSchema as ToolInputSchema;
+      const properties = schema.properties;
+
+      expect(properties).toHaveProperty("toolRecommendations");
+      expect(properties.toolRecommendations.type).toBe("string");
+      expect(properties.toolRecommendations.description).toContain("tools to use");
+
+      expect(properties).toHaveProperty("ruleRecommendations");
+      expect(properties.ruleRecommendations.type).toBe("string");
+      expect(properties.ruleRecommendations.description).toContain("rules to review");
+
+      expect(schema.required).not.toContain("toolRecommendations");
+      expect(schema.required).not.toContain("ruleRecommendations");
+    });
+
+    it("should include tool and rule recommendations in update_task tool", () => {
+      const updateTaskTool = ALL_TOOLS.find((tool) => tool.name === "update_task");
+      expect(updateTaskTool).toBeDefined();
+
+      const schema = updateTaskTool!.inputSchema as ToolInputSchema;
+      const properties = schema.properties;
+
+      expect(properties).toHaveProperty("toolRecommendations");
+      expect(properties.toolRecommendations.type).toBe("string");
+      expect(properties.toolRecommendations.description).toContain("tools to use");
+
+      expect(properties).toHaveProperty("ruleRecommendations");
+      expect(properties.ruleRecommendations.type).toBe("string");
+      expect(properties.ruleRecommendations.description).toContain("rules to review");
+
+      expect(schema.required).not.toContain("toolRecommendations");
+      expect(schema.required).not.toContain("ruleRecommendations");
+    });
+
+    it("should include tool and rule recommendations in task creation via create_project tool", () => {
+      const createProjectTool = ALL_TOOLS.find((tool) => tool.name === "create_project");
+      expect(createProjectTool).toBeDefined();
+
+      const schema = createProjectTool!.inputSchema as unknown as TasksInputSchema;
+      const taskProperties = schema.properties.tasks.items.properties;
+
+      expect(taskProperties).toHaveProperty("toolRecommendations");
+      expect(taskProperties.toolRecommendations.type).toBe("string");
+      expect(taskProperties.toolRecommendations.description).toContain("tools to use");
+
+      expect(taskProperties).toHaveProperty("ruleRecommendations");
+      expect(taskProperties.ruleRecommendations.type).toBe("string");
+      expect(taskProperties.ruleRecommendations.description).toContain("rules to review");
+
+      const required = schema.properties.tasks.items.required;
+      expect(required).not.toContain("toolRecommendations");
+      expect(required).not.toContain("ruleRecommendations");
+    });
+
+    it("should include tool and rule recommendations in task creation via add_tasks_to_project tool", () => {
+      const addTasksTool = ALL_TOOLS.find((tool) => tool.name === "add_tasks_to_project");
+      expect(addTasksTool).toBeDefined();
+
+      const schema = addTasksTool!.inputSchema as unknown as TasksInputSchema;
+      const taskProperties = schema.properties.tasks.items.properties;
+
+      expect(taskProperties).toHaveProperty("toolRecommendations");
+      expect(taskProperties.toolRecommendations.type).toBe("string");
+      expect(taskProperties.toolRecommendations.description).toContain("tools to use");
+
+      expect(taskProperties).toHaveProperty("ruleRecommendations");
+      expect(taskProperties.ruleRecommendations.type).toBe("string");
+      expect(taskProperties.ruleRecommendations.description).toContain("rules to review");
+
+      const required = schema.properties.tasks.items.required;
+      expect(required).not.toContain("toolRecommendations");
+      expect(required).not.toContain("ruleRecommendations");
     });
   });
 }); 

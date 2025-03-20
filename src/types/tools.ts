@@ -64,6 +64,14 @@ const createProjectTool: Tool = {
               type: "string",
               description: "A detailed description of the task.",
             },
+            toolRecommendations: {
+              type: "string",
+              description: "Recommendations for tools to use to complete the task.",
+            },
+            ruleRecommendations: {
+              type: "string",
+              description: "Recommendations for relevant rules to review when completing the task.",
+            },
           },
           required: ["title", "description"],
         },
@@ -114,6 +122,14 @@ const addTasksToProjectTool: Tool = {
               type: "string",
               description: "A detailed description of the task.",
             },
+            toolRecommendations: {
+              type: "string",
+              description: "Recommendations for tools to use to complete the task.",
+            },
+            ruleRecommendations: {
+              type: "string",
+              description: "Recommendations for relevant rules to review when completing the task.",
+            },
           },
           required: ["title", "description"],
         },
@@ -144,7 +160,7 @@ const finalizeProjectTool: Tool = {
 // List Tasks
 const listTasksTool: Tool = {
   name: "list_tasks",
-  description: "List all tasks, optionally filtered by project ID and/or state (open, pending_approval, completed, all).",
+  description: "List all tasks, optionally filtered by project ID and/or state (open, pending_approval, completed, all). Tasks may include tool and rule recommendations to guide their completion.",
   inputSchema: {
     type: "object",
     properties: {
@@ -165,7 +181,7 @@ const listTasksTool: Tool = {
 // Read Task
 const readTaskTool: Tool = {
   name: "read_task",
-  description: "Get details of a specific task by its ID.",
+  description: "Get details of a specific task by its ID. The task may include toolRecommendations and ruleRecommendations fields that should be used to guide task completion.",
   inputSchema: {
     type: "object",
     properties: {
@@ -181,7 +197,7 @@ const readTaskTool: Tool = {
 // Create Task
 const createTaskTool: Tool = {
   name: "create_task",
-  description: "Create a new task within an existing project.",
+  description: "Create a new task within an existing project. You can optionally include tool and rule recommendations to guide task completion.",
   inputSchema: {
     type: "object",
     properties: {
@@ -196,6 +212,14 @@ const createTaskTool: Tool = {
       description: {
         type: "string",
         description: "A detailed description of the task.",
+      },
+      toolRecommendations: {
+        type: "string",
+        description: "Recommendations for tools to use to complete the task.",
+      },
+      ruleRecommendations: {
+        type: "string",
+        description: "Recommendations for relevant rules to review when completing the task.",
       }
     },
     required: ["projectId", "title", "description"]
@@ -205,7 +229,7 @@ const createTaskTool: Tool = {
 // Update Task
 const updateTaskTool: Tool = {
   name: "update_task",
-  description: "Modify a task's properties. Note: (1) completedDetails are required when setting status to 'done', (2) approved tasks cannot be modified, (3) status must follow valid transitions: not started → in progress → done.",
+  description: "Modify a task's properties. Note: (1) completedDetails are required when setting status to 'done', (2) approved tasks cannot be modified, (3) status must follow valid transitions: not started → in progress → done. You can also update tool and rule recommendations to guide task completion.",
   inputSchema: {
     type: "object",
     properties: {
@@ -234,6 +258,14 @@ const updateTaskTool: Tool = {
         type: "string",
         description: "Details about the task completion (required if status is set to 'done').",
       },
+      toolRecommendations: {
+        type: "string",
+        description: "Recommendations for tools to use to complete the task.",
+      },
+      ruleRecommendations: {
+        type: "string",
+        description: "Recommendations for relevant rules to review when completing the task.",
+      }
     },
     required: ["projectId", "taskId"], // title, description, status are optional, but completedDetails is conditionally required
   },
@@ -282,7 +314,7 @@ const approveTaskTool: Tool = {
 // Get Next Task
 const getNextTaskTool: Tool = {
   name: "get_next_task",
-  description: "Get the next task to be done in a project. Returns the first non-approved task in sequence, regardless of status. Use this to determine which task to work on next.",
+  description: "Get the next task to be done in a project. Returns the first non-approved task in sequence, regardless of status. The task may include toolRecommendations and ruleRecommendations fields that should be used to guide task completion.",
   inputSchema: {
     type: "object",
     properties: {
