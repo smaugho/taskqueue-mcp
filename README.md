@@ -12,100 +12,32 @@ A Model Context Protocol (MCP) server for AI task management. This tool helps AI
 - Task status state management
 - Enhanced CLI for task inspection and management
 
-## Structure
-
-The codebase has been refactored into a modular structure:
-
-```
-src/
-├── index.ts              # Main entry point
-├── cli.ts                # CLI for task approval and listing
-├── server/
-│   └── TaskManagerServer.ts   # Core server functionality
-└── types/
-    ├── index.ts          # Type definitions and schemas
-    └── tools.ts          # MCP tool definitions
-```
-
-## Data Schema and Storage
-
-The task manager stores data in a JSON file with platform-specific default locations:
-
-- **Default locations**: 
-  - **Linux**: `~/.local/share/mcp-taskmanager/tasks.json` (following XDG Base Directory specification)
-  - **macOS**: `~/Library/Application Support/mcp-taskmanager/tasks.json`
-  - **Windows**: `%APPDATA%\mcp-taskmanager\tasks.json` (typically `C:\Users\<username>\AppData\Roaming\mcp-taskmanager\tasks.json`)
-- **Custom location**: Set via `TASK_MANAGER_FILE_PATH` environment variable
-
-```bash
-# Example of setting custom storage location
-TASK_MANAGER_FILE_PATH=/path/to/custom/tasks.json npm start
-```
-
-The data schema is organized as follows:
-
-```
-TaskManagerFile
-├── projects: Project[]
-    ├── projectId: string            # Format: "proj-{number}"
-    ├── initialPrompt: string        # Original user request text
-    ├── projectPlan: string          # Additional project details
-    ├── completed: boolean           # Project completion status
-    └── tasks: Task[]                # Array of tasks
-        ├── id: string               # Format: "task-{number}"
-        ├── title: string            # Short task title
-        ├── description: string      # Detailed task description
-        ├── status: string           # Task status: "not started", "in progress", or "done"
-        ├── approved: boolean        # Task approval status
-        ├── completedDetails: string # Completion information (required when status is "done")
-        ├── toolRecommendations: string # Suggested tools that might be helpful for this task
-        └── ruleRecommendations: string # Suggested rules/guidelines to follow for this task
-```
-
-The system persists this structure to the JSON file after each operation.
-
-**Explanation of Task Properties:**
-
-- `id`: A unique identifier for the task
-- `title`: A short, descriptive title for the task
-- `description`: A more detailed explanation of the task
-- `status`: The current status of the task (`not started`, `in progress`, or `done`)
-- `approved`: Indicates whether the task has been approved by the user
-- `completedDetails`: Provides details about the task completion (required when `status` is `done`)
-- `toolRecommendations`: A string containing suggested tools (by name or identifier) that might be helpful for completing this task. The LLM can use this to prioritize which tools to consider.
-- `ruleRecommendations`: A string containing suggested rules or guidelines that should be followed while working on this task. This can include things like "ensure all code is commented," "follow accessibility guidelines," or "use the company style guide". The LLM uses these to improve the quality of its work.
-
-## Installation
-
-```bash
-npm install @chriscarrollsmith/mcp-taskmanager
-```
-
-You can also install globally:
-
-```bash
-npm install -g @chriscarrollsmith/mcp-taskmanager
-```
-
 ## Usage
 
-This command will start the MCP server:
-
-```bash
-npx -y @chriscarrollsmith/mcp-taskmanager
-
-# Or, with a custom tasks.json path:
-TASK_MANAGER_FILE_PATH=/path/to/tasks.json npx -y @chriscarrollsmith/mcp-taskmanager
-```
-
-However, usually you will set the tool configuration in Claude Desktop, Cursor, or another MCP client as follows:
+Usually you will set the tool configuration in Claude Desktop, Cursor, or another MCP client as follows:
 
 ```json
 {
   "tools": {
     "taskmanager": {
       "command": "npx",
-      "args": ["-y", "@chriscarrollsmith/mcp-taskmanager"]
+      "args": ["-y", "taskqueue-mcp"]
+    }
+  }
+}
+```
+
+Or, with a custom tasks.json path:
+
+```json
+{
+  "tools": {
+    "taskmanager": {
+      "command": "npx",
+      "args": ["-y", "taskqueue-mcp"],
+      "env": {
+        "TASK_MANAGER_FILE_PATH": "/path/to/tasks.json"
+      }
     }
   }
 }
@@ -118,84 +50,6 @@ npx task-manager-cli --help
 ```
 
 This will show the available commands and options.
-
-## License
-
-MIT
-
-<a href="https://glama.ai/mcp/servers/bdjh7kx05h"><img width="380" height="200" src="https://glama.ai/mcp/servers/bdjh7kx05h/badge" alt="@kazuph/mcp-taskmanager MCP server" /></a>
-
-## Quick Start (For Users)
-
-### Prerequisites
-- Node.js 18+ (install via `brew install node`)
-- Claude Desktop (install from https://claude.ai/desktop)
-
-### Configuration
-
-1. Open your Claude Desktop configuration file at:
-`~/Library/Application Support/Claude/claude_desktop_config.json`
-
-You can find this through the Claude Desktop menu:
-1. Open Claude Desktop
-2. Click Claude on the Mac menu bar
-3. Click "Settings"
-4. Click "Developer"
-
-2. Add the following to your configuration:
-
-```json
-{
-  "tools": {
-    "taskmanager": {
-      "command": "npx",
-      "args": ["-y", "@chriscarrollsmith/mcp-taskmanager"]
-    }
-  }
-}
-```
-
-## For Developers
-
-### Prerequisites
-- Node.js 18+ (install via `brew install node`)
-- Claude Desktop (install from https://claude.ai/desktop)
-- tsx (install via `npm install -g tsx`)
-
-### Installation
-
-```bash
-git clone https://github.com/chriscarrollsmith/mcp-taskmanager.git
-cd mcp-taskmanager
-npm install
-npm run build
-```
-
-### Development Configuration
-
-1. Make sure Claude Desktop is installed and running.
-
-2. Install tsx globally if you haven't:
-```bash
-npm install -g tsx
-# or
-pnpm add -g tsx
-```
-
-3. Modify your Claude Desktop config located at:
-`~/Library/Application Support/Claude/claude_desktop_config.json`
-
-Add the following to your MCP client's configuration:
-
-```json
-{
-  "tools": {
-    "taskmanager": {
-      "args": ["tsx", "/path/to/mcp-taskmanager/index.ts"]
-    }
-  }
-}
-```
 
 ## Available Operations
 
@@ -433,3 +287,68 @@ All operations return a status code and message in their response:
 - `task_deleted`: Successfully deleted a task
 - `task_not_found`: Task not found
 - `error`: An error occurred (with error message)
+
+## Structure of the Codebase
+
+```
+src/
+├── index.ts              # Main entry point
+├── cli.ts                # CLI for task approval and listing
+├── server/
+│   └── TaskManagerServer.ts   # Core server functionality
+└── types/
+    ├── index.ts          # Type definitions and schemas
+    └── tools.ts          # MCP tool definitions
+```
+
+## Data Schema and Storage
+
+The task manager stores data in a JSON file with platform-specific default locations:
+
+- **Default locations**: 
+  - **Linux**: `~/.local/share/mcp-taskmanager/tasks.json` (following XDG Base Directory specification)
+  - **macOS**: `~/Library/Application Support/mcp-taskmanager/tasks.json`
+  - **Windows**: `%APPDATA%\mcp-taskmanager\tasks.json` (typically `C:\Users\<username>\AppData\Roaming\mcp-taskmanager\tasks.json`)
+- **Custom location**: Set via `TASK_MANAGER_FILE_PATH` environment variable
+
+```bash
+# Example of setting custom storage location
+TASK_MANAGER_FILE_PATH=/path/to/custom/tasks.json npm start
+```
+
+The data schema is organized as follows:
+
+```
+TaskManagerFile
+├── projects: Project[]
+    ├── projectId: string            # Format: "proj-{number}"
+    ├── initialPrompt: string        # Original user request text
+    ├── projectPlan: string          # Additional project details
+    ├── completed: boolean           # Project completion status
+    └── tasks: Task[]                # Array of tasks
+        ├── id: string               # Format: "task-{number}"
+        ├── title: string            # Short task title
+        ├── description: string      # Detailed task description
+        ├── status: string           # Task status: "not started", "in progress", or "done"
+        ├── approved: boolean        # Task approval status
+        ├── completedDetails: string # Completion information (required when status is "done")
+        ├── toolRecommendations: string # Suggested tools that might be helpful for this task
+        └── ruleRecommendations: string # Suggested rules/guidelines to follow for this task
+```
+
+The system persists this structure to the JSON file after each operation.
+
+**Explanation of Task Properties:**
+
+- `id`: A unique identifier for the task
+- `title`: A short, descriptive title for the task
+- `description`: A more detailed explanation of the task
+- `status`: The current status of the task (`not started`, `in progress`, or `done`)
+- `approved`: Indicates whether the task has been approved by the user
+- `completedDetails`: Provides details about the task completion (required when `status` is `done`)
+- `toolRecommendations`: A string containing suggested tools (by name or identifier) that might be helpful for completing this task. The LLM can use this to prioritize which tools to consider.
+- `ruleRecommendations`: A string containing suggested rules or guidelines that should be followed while working on this task. This can include things like "ensure all code is commented," "follow accessibility guidelines," or "use the company style guide". The LLM uses these to improve the quality of its work.
+
+## License
+
+MIT

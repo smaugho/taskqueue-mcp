@@ -15,7 +15,7 @@ const TASK_FILE_PATH = process.env.TASK_MANAGER_FILE_PATH || DEFAULT_PATH;
 // Initialize the server
 const server = new McpServer({
   name: "task-manager-server",
-  version: "1.0.6"
+  version: "1.0.0"
 });
 
 const taskManager = new TaskManagerServer();
