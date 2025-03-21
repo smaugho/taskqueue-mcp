@@ -57,10 +57,23 @@ TaskManagerFile
         ├── description: string      # Detailed task description
         ├── status: string           # Task status: "not started", "in progress", or "done"
         ├── approved: boolean        # Task approval status
-        └── completedDetails: string # Completion information (required when status is "done")
+        ├── completedDetails: string # Completion information (required when status is "done")
+        ├── toolRecommendations: string # Suggested tools that might be helpful for this task
+        └── ruleRecommendations: string # Suggested rules/guidelines to follow for this task
 ```
 
 The system persists this structure to the JSON file after each operation.
+
+**Explanation of Task Properties:**
+
+- `id`: A unique identifier for the task
+- `title`: A short, descriptive title for the task
+- `description`: A more detailed explanation of the task
+- `status`: The current status of the task (`not started`, `in progress`, or `done`)
+- `approved`: Indicates whether the task has been approved by the user
+- `completedDetails`: Provides details about the task completion (required when `status` is `done`)
+- `toolRecommendations`: A string containing suggested tools (by name or identifier) that might be helpful for completing this task. The LLM can use this to prioritize which tools to consider.
+- `ruleRecommendations`: A string containing suggested rules or guidelines that should be followed while working on this task. This can include things like "ensure all code is commented," "follow accessibility guidelines," or "use the company style guide". The LLM uses these to improve the quality of its work.
 
 ## Installation
 
@@ -289,15 +302,21 @@ This command displays information about all projects in the system or a specific
     'tasks': [
       { 
         'title': "Set up project structure", 
-        'description': "Create repository and initialize with basic HTML/CSS/JS files" 
+        'description': "Create repository and initialize with basic HTML/CSS/JS files",
+        'toolRecommendations': "create_directory, create_file, git_init",
+        'ruleRecommendations': "Use consistent file naming, Initialize git repository"
       },
       { 
         'title': "Design homepage", 
-        'description': "Create responsive homepage with navigation and hero section" 
+        'description': "Create responsive homepage with navigation and hero section",
+        'toolRecommendations': "html_editor, css_editor, image_optimizer",
+        'ruleRecommendations': "Follow accessibility guidelines (WCAG), Optimize for mobile-first"
       },
       { 
         'title': "Implement about page", 
-        'description': "Create about page with company history and team section" 
+        'description': "Create about page with company history and team section",
+        'toolRecommendations': "html_editor, css_editor",
+        'ruleRecommendations': "Use clear and concise language, Include team member photos"
       }
   ]
 }
@@ -309,9 +328,9 @@ This command displays information about all projects in the system or a specific
 //   projectId: "proj-1234",
 //   totalTasks: 3,
 //   tasks: [
-//     { id: "task-1", title: "Set up project structure", ... },
-//     { id: "task-2", title: "Design homepage", ... },
-//     { id: "task-3", title: "Implement about page", ... }
+//     { id: "task-1", title: "Set up structure", ..., toolRecommendations: "...", ruleRecommendations: "..." },
+//     { id: "task-2", title: "Design homepage", ..., toolRecommendations: "...", ruleRecommendations: "..." },
+//     { id: "task-3", title: "Implement about page", ..., toolRecommendations: "...", ruleRecommendations: "..." }
 //   ],
 //   message: "Project created with 3 tasks"
 // }
