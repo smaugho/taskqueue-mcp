@@ -8,16 +8,16 @@ const getAppDataDir = () => {
   const platform = process.platform;
   
   if (platform === 'darwin') {
-    // macOS: ~/Library/Application Support/mcp-taskmanager
-    return path.join(os.homedir(), 'Library', 'Application Support', 'mcp-taskmanager');
+    // macOS: ~/Library/Application Support/taskqueue-mcp
+    return path.join(os.homedir(), 'Library', 'Application Support', 'taskqueue-mcp');
   } else if (platform === 'win32') {
-    // Windows: %APPDATA%\mcp-taskmanager (usually C:\Users\<user>\AppData\Roaming\mcp-taskmanager)
-    return path.join(process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming'), 'mcp-taskmanager');
+    // Windows: %APPDATA%\taskqueue-mcp (usually C:\Users\<user>\AppData\Roaming\taskqueue-mcp)
+    return path.join(process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming'), 'taskqueue-mcp');
   } else {
-    // Linux/Unix/Others: Use XDG Base Directory if available, otherwise ~/.local/share/mcp-taskmanager
+    // Linux/Unix/Others: Use XDG Base Directory if available, otherwise ~/.local/share/taskqueue-mcp
     const xdgDataHome = process.env.XDG_DATA_HOME;
-    const linuxDefaultDir = path.join(os.homedir(), '.local', 'share', 'mcp-taskmanager');
-    return xdgDataHome ? path.join(xdgDataHome, 'mcp-taskmanager') : linuxDefaultDir;
+    const linuxDefaultDir = path.join(os.homedir(), '.local', 'share', 'taskqueue-mcp');
+    return xdgDataHome ? path.join(xdgDataHome, 'taskqueue-mcp') : linuxDefaultDir;
   }
 };
 

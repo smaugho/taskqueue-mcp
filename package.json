@@ -1,12 +1,12 @@
 {
 	"name": "taskqueue-mcp",
-	"version": "1.0.1",
+	"version": "1.0.2",
 	"description": "Task Queue MCP Server",
 	"author": "Christopher C. Smith (christopher.smith@promptlytechnologies.com)",
 	"main": "dist/index.js",
 	"type": "module",
 	"bin": {
-		"mcp-taskmanager": "dist/index.js",
+		"taskqueue-mcp": "dist/index.js",
 		"task-manager-cli": "dist/src/cli.js"
 	},
 	"files": [
@@ -28,7 +28,9 @@
 		"url": "git+https://github.com/chriscarrollsmith/taskqueue-mcp.git"
 	},
 	"keywords": [
-		"taskmanager",
+		"taskqueue",
+		"taskqueue-mcp",
+		"taskqueue",
 		"mcp",
 		"claude"
 	],

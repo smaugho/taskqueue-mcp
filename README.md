@@ -19,7 +19,7 @@ Usually you will set the tool configuration in Claude Desktop, Cursor, or anothe
 ```json
 {
   "tools": {
-    "taskmanager": {
+    "taskqueue": {
       "command": "npx",
       "args": ["-y", "taskqueue-mcp"]
     }
@@ -32,7 +32,7 @@ Or, with a custom tasks.json path:
 ```json
 {
   "tools": {
-    "taskmanager": {
+    "taskqueue": {
       "command": "npx",
       "args": ["-y", "taskqueue-mcp"],
       "env": {
@@ -306,9 +306,9 @@ src/
 The task manager stores data in a JSON file with platform-specific default locations:
 
 - **Default locations**: 
-  - **Linux**: `~/.local/share/mcp-taskmanager/tasks.json` (following XDG Base Directory specification)
-  - **macOS**: `~/Library/Application Support/mcp-taskmanager/tasks.json`
-  - **Windows**: `%APPDATA%\mcp-taskmanager\tasks.json` (typically `C:\Users\<username>\AppData\Roaming\mcp-taskmanager\tasks.json`)
+  - **Linux**: `~/.local/share/taskqueue-mcp/tasks.json` (following XDG Base Directory specification)
+  - **macOS**: `~/Library/Application Support/taskqueue-mcp/tasks.json`
+  - **Windows**: `%APPDATA%\taskqueue-mcp\tasks.json` (typically `C:\Users\<username>\AppData\Roaming\taskqueue-mcp\tasks.json`)
 - **Custom location**: Set via `TASK_MANAGER_FILE_PATH` environment variable
 
 ```bash
