@@ -224,4 +224,4 @@ describe('Tools', () => {
       expect(required).not.toContain("ruleRecommendations");
     });
   });
-}); 
+});

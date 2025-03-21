@@ -1,7 +1,7 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import * as os from "node:os";
-import { Task, Project, TaskManagerFile, TaskState } from "../types/index.js";
+import { Task, TaskManagerFile, TaskState } from "../types/index.js";
 
 // Get platform-appropriate app data directory
 const getAppDataDir = () => {
@@ -23,7 +23,6 @@ const getAppDataDir = () => {
 
 // Default path follows platform-specific conventions
 const DEFAULT_PATH = path.join(getAppDataDir(), "tasks.json");
-
 const TASK_FILE_PATH = process.env.TASK_MANAGER_FILE_PATH || DEFAULT_PATH;
 
 export class TaskManagerServer {
