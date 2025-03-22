@@ -4,7 +4,7 @@ import { Command } from "commander";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import * as os from "node:os";
-import { TaskManagerFile } from "./types/index.js";
+import { TaskManagerFile } from "../types/index.js";
 import chalk from "chalk";
 
 const program = new Command();

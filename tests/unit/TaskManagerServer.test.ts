@@ -1,14 +1,14 @@
 import { describe, it, expect } from '@jest/globals';
-import { ALL_TOOLS } from '../../src/types/tools.js';
+import { ALL_TOOLS } from '../../src/server/tools.js';
 import { VALID_STATUS_TRANSITIONS, Task } from '../../src/types/index.js';
-import { TaskManagerServer } from '../../src/server/TaskManagerServer.js';
+import { TaskManager } from '../../src/server/TaskManager.js';
 import { mockTaskManagerData } from '../helpers/mocks.js';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import * as fs from 'node:fs/promises';
 
-describe('TaskManagerServer', () => {
-  let server: TaskManagerServer;
+describe('TaskManager', () => {
+  let server: TaskManager;
   let tempDir: string;
   let tasksFilePath: string;
 
@@ -16,7 +16,7 @@ describe('TaskManagerServer', () => {
     tempDir = path.join(os.tmpdir(), `task-manager-test-${Date.now()}`);
     await fs.mkdir(tempDir, { recursive: true });
     tasksFilePath = path.join(tempDir, "test-tasks.json");
-    server = new TaskManagerServer(tasksFilePath);
+    server = new TaskManager(tasksFilePath);
   });
 
   afterEach(async () => {

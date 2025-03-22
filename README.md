@@ -292,13 +292,14 @@ All operations return a status code and message in their response:
 
 ```
 src/
-├── index.ts              # Main entry point
-├── cli.ts                # CLI for task approval and listing
+├── index.ts                   # Main entry point
+├── client/
+│   └── cli.ts                 # CLI for user task review and approval
 ├── server/
-│   └── TaskManagerServer.ts   # Core server functionality
+│   ├── TaskManager.ts         # Core service functionality
+│   └── tools.ts               # MCP tool definitions
 └── types/
-    ├── index.ts          # Type definitions and schemas
-    └── tools.ts          # MCP tool definitions
+    └── index.ts               # Type definitions and schemas
 ```
 
 ## Data Schema and Storage

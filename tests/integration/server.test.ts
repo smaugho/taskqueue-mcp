@@ -1,12 +1,12 @@
-import { ALL_TOOLS } from '../../src/types/tools.js';
-import { TaskManagerServer } from '../../src/server/TaskManagerServer.js';
+import { ALL_TOOLS } from '../../src/server/tools.js';
+import { TaskManager } from '../../src/server/TaskManager.js';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import * as fs from 'node:fs/promises';
 import { Task } from '../../src/types/index.js';
 
-describe('TaskManagerServer Integration', () => {
-  let server: TaskManagerServer;
+describe('TaskManager Integration', () => {
+  let server: TaskManager;
   let tempDir: string;
   let testFilePath: string;
 
@@ -17,7 +17,7 @@ describe('TaskManagerServer Integration', () => {
     testFilePath = path.join(tempDir, 'test-tasks.json');
     
     // Initialize the server with the test file path
-    server = new TaskManagerServer(testFilePath);
+    server = new TaskManager(testFilePath);
   });
 
   afterEach(async () => {
@@ -484,7 +484,7 @@ describe('TaskManagerServer Integration', () => {
     ]);
 
     // Create a new server instance pointing to the same file
-    const newServer = new TaskManagerServer(testFilePath);
+    const newServer = new TaskManager(testFilePath);
 
     // Verify the data was loaded correctly
     const result = await newServer.listProjects("open");
@@ -499,13 +499,13 @@ describe('TaskManagerServer Integration', () => {
     }
 
     // Create another server instance and verify the changes persisted
-    const thirdServer = new TaskManagerServer(testFilePath);
+    const thirdServer = new TaskManager(testFilePath);
     const pendingResult = await thirdServer.listTasks(project.projectId, "pending_approval");
     expect(pendingResult.tasks!.length).toBe(1);
   });
 
   it("should handle tool/rule recommendations end-to-end", async () => {
-    const server = new TaskManagerServer(testFilePath);
+    const server = new TaskManager(testFilePath);
     
     // Create a project with tasks that have recommendations
     const { projectId } = await server.createProject("Test Project", [

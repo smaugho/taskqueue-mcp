@@ -25,7 +25,7 @@ const getAppDataDir = () => {
 const DEFAULT_PATH = path.join(getAppDataDir(), "tasks.json");
 const TASK_FILE_PATH = process.env.TASK_MANAGER_FILE_PATH || DEFAULT_PATH;
 
-export class TaskManagerServer {
+export class TaskManager {
   private projectCounter = 0;
   private taskCounter = 0;
   private data: TaskManagerFile = { projects: [] };

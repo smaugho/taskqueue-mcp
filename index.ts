@@ -2,8 +2,8 @@
 
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
-import { TaskManagerServer } from "./src/server/TaskManagerServer.js";
-import { ALL_TOOLS } from "./src/types/tools.js";
+import { TaskManager } from "./src/server/TaskManager.js";
+import { ALL_TOOLS } from "./src/server/tools.js";
 import { ListToolsRequestSchema, CallToolRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 
 // Create server with capabilities BEFORE setting up handlers
@@ -29,7 +29,7 @@ console.error('Server starting with env:', {
 });
 
 // Initialize task manager
-const taskManager = new TaskManagerServer();
+const taskManager = new TaskManager();
 
 // Set up request handlers AFTER capabilities are configured
 server.setRequestHandler(ListToolsRequestSchema, async () => {
