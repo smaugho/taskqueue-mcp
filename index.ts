@@ -6,16 +6,37 @@ import { TaskManagerServer } from "./src/server/TaskManagerServer.js";
 import { ALL_TOOLS } from "./src/types/tools.js";
 import { ListToolsRequestSchema, CallToolRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 
-const server = new Server({
-  name: "task-manager-server",
-  version: "1.0.4"
+// Create server with capabilities BEFORE setting up handlers
+const server = new Server(
+  {
+    name: "task-manager-server",
+    version: "1.0.4"
+  },
+  {
+    capabilities: {
+      tools: {
+        list: true,
+        call: true
+      }
+    }
+  }
+);
+
+// Debug logging
+console.error('Server starting with env:', {
+  TASK_MANAGER_FILE_PATH: process.env.TASK_MANAGER_FILE_PATH,
+  NODE_ENV: process.env.NODE_ENV
 });
 
+// Initialize task manager
 const taskManager = new TaskManagerServer();
 
-server.setRequestHandler(ListToolsRequestSchema, async () => ({
-  tools: ALL_TOOLS,
-}));
+// Set up request handlers AFTER capabilities are configured
+server.setRequestHandler(ListToolsRequestSchema, async () => {
+  return {
+    tools: ALL_TOOLS
+  };
+});
 
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
   try {
