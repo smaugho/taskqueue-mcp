@@ -1,6 +1,6 @@
 {
 	"name": "taskqueue-mcp",
-	"version": "1.0.4",
+	"version": "1.0.5",
 	"description": "Task Queue MCP Server",
 	"author": "Christopher C. Smith (christopher.smith@promptlytechnologies.com)",
 	"main": "dist/index.js",
