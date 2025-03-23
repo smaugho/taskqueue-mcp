@@ -1,9 +1,10 @@
 on:
   push:
-    branches: main
+    branches: 
+      - '**'  # Run on all branches
 
 jobs:
-  publish:
+  test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -12,6 +13,17 @@ jobs:
           node-version: 'latest'
       - run: npm ci
       - run: npm test
+  
+  publish:
+    needs: test
+    if: github.ref == 'refs/heads/main'  # Only run this job on main branch
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 'latest'
+      - run: npm ci
       - uses: JS-DevTools/npm-publish@v3
         with:
           token: ${{ secrets.NPM_TOKEN }} 
