@@ -1,6 +1,6 @@
 {
 	"name": "taskqueue-mcp",
-	"version": "1.0.5",
+	"version": "1.0.6",
 	"description": "Task Queue MCP Server",
 	"author": "Christopher C. Smith (christopher.smith@promptlytechnologies.com)",
 	"main": "dist/index.js",
@@ -19,7 +19,7 @@
 		"build": "tsc",
 		"start": "node dist/index.js",
 		"dev": "tsc && node dist/index.js",
-		"test": "NODE_OPTIONS=--experimental-vm-modules jest",
+		"test": "tsc && NODE_OPTIONS=--experimental-vm-modules jest",
 		"approve-task": "node dist/src/cli.js approve-task",
 		"list-tasks": "node dist/src/cli.js list"
 	},

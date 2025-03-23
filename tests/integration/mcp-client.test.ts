@@ -4,7 +4,7 @@ import { describe, it, expect, beforeAll, afterAll } from '@jest/globals';
 import * as path from 'node:path';
 import * as os from 'node:os';
 import * as fs from 'node:fs/promises';
-import { Tool } from "@modelcontextprotocol/sdk/types.js";
+import process from 'node:process';
 
 interface ToolResponse {
   isError: boolean;
@@ -29,7 +29,7 @@ describe('MCP Client Integration', () => {
 
     // Set up the transport with environment variable for test file
     transport = new StdioClientTransport({
-      command: "node",
+      command: process.execPath,  // Use full path to current Node.js executable
       args: ["dist/index.js"],
       env: {
         TASK_MANAGER_FILE_PATH: testFilePath,
@@ -38,7 +38,7 @@ describe('MCP Client Integration', () => {
       }
     });
 
-    console.log('Created transport with command:', 'node', 'dist/index.js');
+    console.log('Created transport with command:', process.execPath, 'dist/index.js');
 
     // Set up the client
     client = new Client(
