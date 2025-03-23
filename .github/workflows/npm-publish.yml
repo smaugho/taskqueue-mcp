@@ -12,6 +12,8 @@ jobs:
         with:
           node-version: 'latest'
       - run: npm ci
+      - run: npm install -g tsx
+      - run: npm run build  # Add build step if needed
       - run: npm test
   
   publish:
@@ -24,6 +26,8 @@ jobs:
         with:
           node-version: 'latest'
       - run: npm ci
+      - run: npm install -g tsx
+      - run: npm run build  # Add build step here too
       - uses: JS-DevTools/npm-publish@v3
         with:
           token: ${{ secrets.NPM_TOKEN }} 
