@@ -315,6 +315,12 @@ program
             if (t.completedDetails) {
               console.log(`    Completed Details: ${t.completedDetails}`);
             }
+            if (t.toolRecommendations) {
+              console.log(`    Tool Recommendations: ${t.toolRecommendations}`);
+            }
+            if (t.ruleRecommendations) {
+              console.log(`    Rule Recommendations: ${t.ruleRecommendations}`);
+            }
           });
         } else {
           console.log(chalk.yellow('\nNo tasks match the specified state filter.'));
