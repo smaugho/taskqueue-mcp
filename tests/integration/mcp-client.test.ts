@@ -105,7 +105,7 @@ describe('MCP Client Integration', () => {
     expect(response).toHaveProperty('tools');
     expect(Array.isArray(response.tools)).toBe(true);
     expect(response.tools.length).toBeGreaterThan(0);
-    
+
     // Check for essential tools
     const toolNames = response.tools.map(tool => tool.name);
     console.log('Available tools:', toolNames);
@@ -194,4 +194,16 @@ describe('MCP Client Integration', () => {
     expect(deleteResult.isError).toBeFalsy();
     console.log('Deleted project');
   });
-}); 
+
+  it('should have accurate version', async () => {
+    console.log('Testing server version...');
+    const response = await client.getServerVersion();
+    expect(response).toBeDefined();
+    expect(response).toHaveProperty('version');
+    // Should match package.json version
+    const packageJson = JSON.parse(
+      await fs.readFile(new URL('../../package.json', import.meta.url), 'utf8')
+    );
+    expect(response?.version).toBe(packageJson.version);
+  });
+});

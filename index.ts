@@ -268,4 +268,4 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
 // Start the server
 const transport = new StdioServerTransport();
-await server.connect(transport);
+server.connect(transport);

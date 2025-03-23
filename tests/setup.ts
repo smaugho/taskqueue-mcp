@@ -13,4 +13,10 @@ export {
   afterEach,
   beforeAll,
   afterAll
-}; 
+};
+
+// Add global teardown
+afterAll(async () => {
+  // Allow time for any open handles to close
+  await new Promise(resolve => setTimeout(resolve, 500));
+}); 
