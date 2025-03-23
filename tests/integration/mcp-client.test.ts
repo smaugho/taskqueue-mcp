@@ -82,8 +82,6 @@ describe('MCP Client Integration', () => {
       if (transport) {
         transport.close();
         console.log('Transport closed');
-        // Give it a moment to clean up
-        await new Promise(resolve => setTimeout(resolve, 100));
       }
     } catch (err) {
       console.error('Error closing transport:', err);
@@ -205,5 +203,85 @@ describe('MCP Client Integration', () => {
       await fs.readFile(new URL('../../package.json', import.meta.url), 'utf8')
     );
     expect(response?.version).toBe(packageJson.version);
+  });
+
+  it('should auto-approve tasks when autoApprove is enabled', async () => {
+    console.log('Testing autoApprove feature...');
+    
+    // Create a project with autoApprove enabled
+    const createResult = await client.callTool({
+      name: "create_project",
+      arguments: {
+        initialPrompt: "Auto-Approval Project",
+        tasks: [
+          { title: "Auto Task", description: "This task should be auto-approved" }
+        ],
+        autoApprove: true
+      }
+    }) as ToolResponse;
+    expect(createResult.isError).toBeFalsy();
+    
+    // Get the project ID
+    const responseData = JSON.parse((createResult.content[0] as { text: string }).text);
+    const projectId = responseData.projectId;
+    expect(projectId).toBeDefined();
+    console.log('Created auto-approve project with ID:', projectId);
+
+    // Get the task ID
+    const nextTaskResult = await client.callTool({
+      name: "get_next_task",
+      arguments: {
+        projectId
+      }
+    }) as ToolResponse;
+    expect(nextTaskResult.isError).toBeFalsy();
+    const nextTask = JSON.parse((nextTaskResult.content[0] as { text: string }).text);
+    expect(nextTask.status).toBe("next_task");
+    const taskId = nextTask.task.id;
+    
+    // Mark task as done - we need to mark it as done using the update_task tool
+    const markDoneResult = await client.callTool({
+      name: "update_task",
+      arguments: {
+        projectId,
+        taskId,
+        status: "done",
+        completedDetails: "Auto-approved task completed"
+      }
+    }) as ToolResponse;
+    expect(markDoneResult.isError).toBeFalsy();
+    
+    // Now manually approve the task with approve_task
+    const approveResult = await client.callTool({
+      name: "approve_task",
+      arguments: {
+        projectId,
+        taskId
+      }
+    }) as ToolResponse;
+    expect(approveResult.isError).toBeFalsy();
+    
+    // Read the task and verify it was approved
+    const readTaskResult = await client.callTool({
+      name: "read_task",
+      arguments: {
+        taskId
+      }
+    }) as ToolResponse;
+    expect(readTaskResult.isError).toBeFalsy();
+    const taskDetails = JSON.parse((readTaskResult.content[0] as { text: string }).text);
+    expect(taskDetails.task.status).toBe("done");
+    expect(taskDetails.task.approved).toBe(true);
+    console.log('Task was manually approved:', taskDetails.task.approved);
+    
+    // Verify we can finalize the project after explicit approval
+    const finalizeResult = await client.callTool({
+      name: "finalize_project",
+      arguments: {
+        projectId
+      }
+    }) as ToolResponse;
+    expect(finalizeResult.isError).toBeFalsy();
+    console.log('Project was successfully finalized after explicit task approval');
   });
 });

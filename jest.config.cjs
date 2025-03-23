@@ -14,4 +14,10 @@ module.exports = {
     ],
   },
   modulePathIgnorePatterns: ['<rootDir>/dist/'],
+  // Force Jest to exit after all tests have completed
+  forceExit: true,
+  // Detect open handles and warn about them
+  detectOpenHandles: true,
+  // Extend the timeout to allow sufficient time for tests to complete
+  testTimeout: 30000,
 }; 

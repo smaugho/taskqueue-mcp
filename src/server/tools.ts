@@ -76,6 +76,10 @@ const createProjectTool: Tool = {
           required: ["title", "description"],
         },
       },
+      autoApprove: {
+        type: "boolean",
+        description: "If true, tasks will be automatically approved when marked as done. If false or not provided, tasks require manual approval.",
+      },
     },
     required: ["initialPrompt", "tasks"],
   },
