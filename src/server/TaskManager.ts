@@ -129,7 +129,8 @@ export class TaskManager {
   public async createProject(
     initialPrompt: string,
     tasks: { title: string; description: string; toolRecommendations?: string; ruleRecommendations?: string }[],
-    projectPlan?: string
+    projectPlan?: string,
+    autoApprove?: boolean
   ) {
     await this.ensureInitialized();
     this.projectCounter += 1;
@@ -156,6 +157,7 @@ export class TaskManager {
       projectPlan: projectPlan || initialPrompt,
       tasks: newTasks,
       completed: false,
+      autoApprove: autoApprove === true ? true : false,
     });
 
     await this.saveTasks();
@@ -210,38 +212,6 @@ export class TaskManager {
         description: nextTask.description,
       },
       message: `Next task is ready. Task approval will be required after completion.\n${progressTable}`,
-    };
-  }
-
-  public async markTaskDone(
-    projectId: string,
-    taskId: string,
-    completedDetails?: string
-  ) {
-    await this.ensureInitialized();
-    const proj = this.data.projects.find((p) => p.projectId === projectId);
-    if (!proj) return { status: "error", message: "Project not found" };
-    const task = proj.tasks.find((t) => t.id === taskId);
-    if (!task) return { status: "error", message: "Task not found" };
-    if (task.status === "done")
-      return {
-        status: "already_done",
-        message: "Task is already marked done.",
-      };
-
-    task.status = "done";
-    task.completedDetails = completedDetails || "";
-    await this.saveTasks();
-    return {
-      status: "task_marked_done",
-      projectId: proj.projectId,
-      task: {
-        id: task.id,
-        title: task.title,
-        description: task.description,
-        completedDetails: task.completedDetails,
-        approved: task.approved,
-      },
     };
   }
 
@@ -457,6 +427,8 @@ export class TaskManager {
       description?: string;
       toolRecommendations?: string;
       ruleRecommendations?: string;
+      status?: "not started" | "in progress" | "done";
+      completedDetails?: string;
     }
   ) {
     await this.ensureInitialized();
@@ -472,6 +444,11 @@ export class TaskManager {
 
     // Update the task with the provided updates
     project.tasks[taskIndex] = { ...project.tasks[taskIndex], ...updates };
+
+    // Check if status was updated to 'done' and if project has autoApprove enabled
+    if (updates.status === 'done' && project.autoApprove) {
+      project.tasks[taskIndex].approved = true;
+    }
 
     await this.saveTasks();
     return project.tasks[taskIndex];

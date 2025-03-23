@@ -10,7 +10,7 @@ import { ListToolsRequestSchema, CallToolRequestSchema } from "@modelcontextprot
 const server = new Server(
   {
     name: "task-manager-server",
-    version: "1.0.7"
+    version: "1.0.8"
   },
   {
     capabilities: {
@@ -178,40 +178,19 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           throw new Error("Missing required parameters: projectId and/or taskId");
         }
         
-        const updates: { title?: string; description?: string } = {};
-        if (args.title !== undefined) updates.title = String(args.title);
-        if (args.description !== undefined) updates.description = String(args.description);
-        
+        const updates = Object.fromEntries(
+          Object.entries({
+            title: args.title !== undefined ? String(args.title) : undefined,
+            description: args.description !== undefined ? String(args.description) : undefined,
+            status: args.status !== undefined ? String(args.status) as "not started" | "in progress" | "done" : undefined,
+            completedDetails: args.completedDetails !== undefined ? String(args.completedDetails) : undefined,
+            toolRecommendations: args.toolRecommendations !== undefined ? String(args.toolRecommendations) : undefined,
+            ruleRecommendations: args.ruleRecommendations !== undefined ? String(args.ruleRecommendations) : undefined
+          }).filter(([_, value]) => value !== undefined)
+        );
+
         const result = await taskManager.updateTask(projectId, taskId, updates);
-        
-        // Handle status change separately if needed
-        if (args.status) {
-          const status = args.status as "not started" | "in progress" | "done";
-          const proj = taskManager["data"].projects.find(p => p.projectId === projectId);
-          if (proj) {
-            const task = proj.tasks.find(t => t.id === taskId);
-            if (task) {
-              if (status === "done") {
-                if (!args.completedDetails) {
-                  return {
-                    content: [{ type: "text", text: JSON.stringify({
-                      status: "error",
-                      message: "completedDetails is required when setting status to 'done'"
-                    }, null, 2) }],
-                  };
-                }
-                
-                // Use markTaskDone for proper transition to done status
-                await taskManager.markTaskDone(projectId, taskId, String(args.completedDetails));
-              } else {
-                // For other status changes
-                task.status = status;
-                await taskManager["saveTasks"]();
-              }
-            }
-          }
-        }
-        
+
         return {
           content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
         };

@@ -1,6 +1,6 @@
 # MCP Task Manager
 
-A Model Context Protocol (MCP) server for AI task management. This tool helps AI assistants handle multi-step tasks in a structured way, with user approval checkpoints.
+  MCP Task Manager ([npm package: taskqueue-mcp](https://www.npmjs.com/package/taskqueue-mcp)) is a Model Context Protocol (MCP) server for AI task management. This tool helps AI assistants handle multi-step tasks in a structured way, with optional user approval checkpoints.
 
 ## Features
 

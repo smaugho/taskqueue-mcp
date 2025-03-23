@@ -18,6 +18,7 @@ export interface Project {
   projectPlan: string;
   tasks: Task[];
   completed: boolean;
+  autoApprove?: boolean;
 }
 
 export interface TaskManagerFile {
