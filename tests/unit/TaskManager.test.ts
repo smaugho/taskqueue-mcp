@@ -83,11 +83,11 @@ describe('TaskManager', () => {
           }
         ],
         'Test plan'
-      ) as { status: string; projectId: string; totalTasks: number; tasks: any[]; message: string };
+      );
 
-      expect(result.status).toBe('planned');
-      expect(result.projectId).toBeDefined();
-      expect(result.totalTasks).toBe(1);
+      expect(result.status).toBe('success');
+      expect(result.data.projectId).toBeDefined();
+      expect(result.data.totalTasks).toBe(1);
     });
 
     it('should handle project listing', async () => {
@@ -103,9 +103,9 @@ describe('TaskManager', () => {
         'Test plan'
       );
 
-      const result = await server.listProjects() as { status: string; projects: any[]; message: string };
-      expect(result.status).toBe('projects_listed');
-      expect(result.projects).toHaveLength(1);
+      const result = await server.listProjects();
+      expect(result.status).toBe('success');
+      expect(result.data.projects).toHaveLength(1);
     });
 
     it('should handle project deletion', async () => {
@@ -119,16 +119,16 @@ describe('TaskManager', () => {
           }
         ],
         'Test plan'
-      ) as { status: string; projectId: string; totalTasks: number; tasks: any[]; message: string };
+      );
 
       // Delete the project directly using data model access
-      const projectIndex = server["data"].projects.findIndex((p) => p.projectId === createResult.projectId);
+      const projectIndex = server["data"].projects.findIndex((p) => p.projectId === createResult.data.projectId);
       server["data"].projects.splice(projectIndex, 1);
       await server["saveTasks"]();
       
       // Verify deletion
-      const listResult = await server.listProjects() as { status: string; projects: any[]; message: string };
-      expect(listResult.projects).toHaveLength(0);
+      const listResult = await server.listProjects();
+      expect(listResult.data.projects).toHaveLength(0);
     });
   });
 
@@ -144,16 +144,16 @@ describe('TaskManager', () => {
           }
         ],
         'Test plan'
-      ) as { status: string; projectId: string; totalTasks: number; tasks: { id: string }[]; message: string };
+      );
 
-      const projectId = createResult.projectId;
-      const taskId = createResult.tasks[0].id;
+      const projectId = createResult.data.projectId;
+      const taskId = createResult.data.tasks[0].id;
 
       // Test task reading
       const readResult = await server.openTaskDetails(taskId);
-      expect(readResult.status).toBe('task_details');
-      if (readResult.status === 'task_details' && readResult.task) {
-        expect(readResult.task.id).toBe(taskId);
+      expect(readResult.status).toBe('success');
+      if (readResult.status === 'success' && readResult.data.task) {
+        expect(readResult.data.task.id).toBe(taskId);
       }
 
       // Test task updating
@@ -161,22 +161,24 @@ describe('TaskManager', () => {
         title: "Updated task",
         description: "Updated description"
       });
-      expect(updatedTask.title).toBe("Updated task");
-      expect(updatedTask.description).toBe("Updated description");
-      expect(updatedTask.status).toBe("not started");
+      expect(updatedTask.status).toBe('success');
+      expect(updatedTask.data.title).toBe("Updated task");
+      expect(updatedTask.data.description).toBe("Updated description");
+      expect(updatedTask.data.status).toBe("not started");
       
       // Test status update
       const updatedStatusTask = await server.updateTask(projectId, taskId, {
         status: 'in progress'
       });
-      expect(updatedStatusTask.status).toBe('in progress');
+      expect(updatedStatusTask.status).toBe('success');
+      expect(updatedStatusTask.data.status).toBe('in progress');
 
       // Test task deletion
       const deleteResult = await server.deleteTask(
         projectId,
         taskId
-      ) as { status: string; message: string };
-      expect(deleteResult.status).toBe('task_deleted');
+      );
+      expect(deleteResult.status).toBe('success');
     });
     
     it('should get the next task', async () => {
@@ -193,19 +195,16 @@ describe('TaskManager', () => {
             description: 'Description 2'
           }
         ]
-      ) as { 
-        projectId: string; 
-        tasks: { id: string }[];
-      };
+      );
 
-      const projectId = createResult.projectId;
+      const projectId = createResult.data.projectId;
       
       // Get the next task
       const nextTaskResult = await server.getNextTask(projectId);
       
       expect(nextTaskResult.status).toBe('next_task');
-      if (nextTaskResult.status === 'next_task' && nextTaskResult.task) {
-        expect(nextTaskResult.task.id).toBe(createResult.tasks[0].id);
+      if (nextTaskResult.status === 'next_task') {
+        expect(nextTaskResult.data.id).toBe(createResult.data.tasks[0].id);
       }
     });
   });
@@ -229,20 +228,18 @@ describe('TaskManager', () => {
             description: 'Description for task 2'
           }
         ]
-      ) as { 
-        projectId: string; 
-        tasks: { id: string }[];
-      };
+      );
       
-      projectId = createResult.projectId;
-      taskId1 = createResult.tasks[0].id;
-      taskId2 = createResult.tasks[1].id;
+      projectId = createResult.data.projectId;
+      taskId1 = createResult.data.tasks[0].id;
+      taskId2 = createResult.data.tasks[1].id;
     });
     
     it('should not approve project if tasks are not done', async () => {
-      const result = await server.approveProjectCompletion(projectId);
-      expect(result.status).toBe('error');
-      expect(result.message).toContain('Not all tasks are done');
+      await expect(server.approveProjectCompletion(projectId)).rejects.toMatchObject({
+        code: 'ERR_3003',
+        message: 'Not all tasks are done'
+      });
     });
     
     it('should not approve project if tasks are done but not approved', async () => {
@@ -256,9 +253,10 @@ describe('TaskManager', () => {
         completedDetails: 'Task 2 completed details'
       });
       
-      const result = await server.approveProjectCompletion(projectId);
-      expect(result.status).toBe('error');
-      expect(result.message).toContain('Not all done tasks are approved');
+      await expect(server.approveProjectCompletion(projectId)).rejects.toMatchObject({
+        code: 'ERR_3004',
+        message: 'Not all done tasks are approved'
+      });
     });
     
     it('should approve project when all tasks are done and approved', async () => {
@@ -277,7 +275,7 @@ describe('TaskManager', () => {
       await server.approveTaskCompletion(projectId, taskId2);
       
       const result = await server.approveProjectCompletion(projectId);
-      expect(result.status).toBe('project_approved_complete');
+      expect(result.status).toBe('success');
       
       // Verify project is marked as completed
       const project = server["data"].projects.find(p => p.projectId === projectId);
@@ -300,9 +298,10 @@ describe('TaskManager', () => {
       await server.approveProjectCompletion(projectId);
       
       // Try to approve again
-      const result = await server.approveProjectCompletion(projectId);
-      expect(result.status).toBe('error');
-      expect(result.message).toContain('Project is already completed');
+      await expect(server.approveProjectCompletion(projectId)).rejects.toMatchObject({
+        code: 'ERR_3001',
+        message: 'Project is already completed'
+      });
     });
   });
 
@@ -312,22 +311,23 @@ describe('TaskManager', () => {
         // Create some projects. One open and one complete
         const project1 = await server.createProject("Open Project", [{ title: "Task 1", description: "Desc" }]);
         const project2 = await server.createProject("Completed project", [{ title: "Task 2", description: "Desc" }]);
-        const proj1Id = project1.projectId;
-        const proj2Id = project2.projectId;
+        const proj1Id = project1.data.projectId;
+        const proj2Id = project2.data.projectId;
 
         // Complete tasks in project 2
-        await server.updateTask(proj2Id, project2.tasks[0].id, {
+        await server.updateTask(proj2Id, project2.data.tasks[0].id, {
           status: 'done',
           completedDetails: 'Completed task details'
         });
-        await server.approveTaskCompletion(proj2Id, project2.tasks[0].id);
+        await server.approveTaskCompletion(proj2Id, project2.data.tasks[0].id);
         
         // Approve project 2
         await server.approveProjectCompletion(proj2Id);
 
         const result = await server.listProjects("open");
-        expect(result.projects.length).toBe(1);
-        expect(result.projects[0].projectId).toBe(proj1Id);
+        expect(result.status).toBe('success');
+        expect(result.data.projects.length).toBe(1);
+        expect(result.data.projects[0].projectId).toBe(proj1Id);
       });
 
       it('should list only pending approval projects', async () => {
@@ -337,22 +337,23 @@ describe('TaskManager', () => {
         const project3 = await server.createProject("In Progress Project", [{ title: "Task 3", description: "Desc" }]);
 
         // Mark task1 as done but not approved
-        await server.updateTask(project1.projectId, project1.tasks[0].id, {
+        await server.updateTask(project1.data.projectId, project1.data.tasks[0].id, {
           status: 'done',
           completedDetails: 'Completed task details'
         });
 
         // Complete project 2 fully
-        await server.updateTask(project2.projectId, project2.tasks[0].id, {
+        await server.updateTask(project2.data.projectId, project2.data.tasks[0].id, {
           status: 'done',
           completedDetails: 'Completed task details'
         });
-        await server.approveTaskCompletion(project2.projectId, project2.tasks[0].id);
-        await server.approveProjectCompletion(project2.projectId);
+        await server.approveTaskCompletion(project2.data.projectId, project2.data.tasks[0].id);
+        await server.approveProjectCompletion(project2.data.projectId);
 
         const result = await server.listProjects("pending_approval");
-        expect(result.projects.length).toBe(1);
-        expect(result.projects[0].projectId).toBe(project1.projectId);
+        expect(result.status).toBe('success');
+        expect(result.data.projects.length).toBe(1);
+        expect(result.data.projects[0].projectId).toBe(project1.data.projectId);
       });
 
       it('should list only completed projects', async () => {
@@ -362,22 +363,23 @@ describe('TaskManager', () => {
         const project3 = await server.createProject("Pending Project", [{ title: "Task 3", description: "Desc" }]);
 
         // Complete project 2 fully
-        await server.updateTask(project2.projectId, project2.tasks[0].id, {
+        await server.updateTask(project2.data.projectId, project2.data.tasks[0].id, {
           status: 'done',
           completedDetails: 'Completed task details'
         });
-        await server.approveTaskCompletion(project2.projectId, project2.tasks[0].id);
-        await server.approveProjectCompletion(project2.projectId);
+        await server.approveTaskCompletion(project2.data.projectId, project2.data.tasks[0].id);
+        await server.approveProjectCompletion(project2.data.projectId);
 
         // Mark project 3's task as done but not approved
-        await server.updateTask(project3.projectId, project3.tasks[0].id, {
+        await server.updateTask(project3.data.projectId, project3.data.tasks[0].id, {
           status: 'done',
           completedDetails: 'Completed task details'
         });
 
         const result = await server.listProjects("completed");
-        expect(result.projects.length).toBe(1);
-        expect(result.projects[0].projectId).toBe(project2.projectId);
+        expect(result.status).toBe('success');
+        expect(result.data.projects.length).toBe(1);
+        expect(result.data.projects[0].projectId).toBe(project2.data.projectId);
       });
 
       it('should list all projects when state is \'all\'', async () => {
@@ -387,12 +389,14 @@ describe('TaskManager', () => {
         const project3 = await server.createProject("Pending Project", [{ title: "Task 3", description: "Desc" }]);
 
         const result = await server.listProjects("all");
-        expect(result.projects.length).toBe(3);
+        expect(result.status).toBe('success');
+        expect(result.data.projects.length).toBe(3);
       });
 
       it('should handle empty project list', async () => {
         const result = await server.listProjects("open");
-        expect(result.projects.length).toBe(0);
+        expect(result.status).toBe('success');
+        expect(result.data.projects.length).toBe(0);
       });
     });
 
@@ -408,31 +412,34 @@ describe('TaskManager', () => {
         ]);
 
         // Set task states
-        await server.updateTask(project1.projectId, project1.tasks[1].id, {
+        await server.updateTask(project1.data.projectId, project1.data.tasks[1].id, {
           status: 'done',
           completedDetails: 'Task 2 completed details'
         });
-        await server.approveTaskCompletion(project1.projectId, project1.tasks[1].id);
+        await server.approveTaskCompletion(project1.data.projectId, project1.data.tasks[1].id);
 
-        await server.updateTask(project2.projectId, project2.tasks[0].id, {
+        await server.updateTask(project2.data.projectId, project2.data.tasks[0].id, {
           status: 'done',
           completedDetails: 'Task 3 completed details'
         });
 
         // Test open tasks
         const openResult = await server.listTasks(undefined, "open");
-        expect(openResult.tasks!.length).toBe(1);
-        expect(openResult.tasks![0].title).toBe("Task 1");
+        expect(openResult.status).toBe('success');
+        expect(openResult.data.tasks!.length).toBe(1);
+        expect(openResult.data.tasks![0].title).toBe("Task 1");
 
         // Test pending approval tasks
         const pendingResult = await server.listTasks(undefined, "pending_approval");
-        expect(pendingResult.tasks!.length).toBe(1);
-        expect(pendingResult.tasks![0].title).toBe("Task 3");
+        expect(pendingResult.status).toBe('success');
+        expect(pendingResult.data.tasks!.length).toBe(1);
+        expect(pendingResult.data.tasks![0].title).toBe("Task 3");
 
         // Test completed tasks
         const completedResult = await server.listTasks(undefined, "completed");
-        expect(completedResult.tasks!.length).toBe(1);
-        expect(completedResult.tasks![0].title).toBe("Task 2");
+        expect(completedResult.status).toBe('success');
+        expect(completedResult.data.tasks!.length).toBe(1);
+        expect(completedResult.data.tasks![0].title).toBe("Task 2");
       });
 
       it('should list tasks for specific project filtered by state', async () => {
@@ -444,50 +451,55 @@ describe('TaskManager', () => {
         ]);
 
         // Set task states
-        await server.updateTask(project.projectId, project.tasks[1].id, {
+        await server.updateTask(project.data.projectId, project.data.tasks[1].id, {
           status: 'done',
           completedDetails: 'Task 2 completed details'
         });
-        await server.approveTaskCompletion(project.projectId, project.tasks[1].id);
+        await server.approveTaskCompletion(project.data.projectId, project.data.tasks[1].id);
         
-        await server.updateTask(project.projectId, project.tasks[2].id, {
+        await server.updateTask(project.data.projectId, project.data.tasks[2].id, {
           status: 'done',
           completedDetails: 'Task 3 completed details'
         });
 
         // Test open tasks
-        const openResult = await server.listTasks(project.projectId, "open");
-        expect(openResult.tasks!.length).toBe(1);
-        expect(openResult.tasks![0].title).toBe("Task 1");
+        const openResult = await server.listTasks(project.data.projectId, "open");
+        expect(openResult.status).toBe('success');
+        expect(openResult.data.tasks!.length).toBe(1);
+        expect(openResult.data.tasks![0].title).toBe("Task 1");
 
         // Test pending approval tasks
-        const pendingResult = await server.listTasks(project.projectId, "pending_approval");
-        expect(pendingResult.tasks!.length).toBe(1);
-        expect(pendingResult.tasks![0].title).toBe("Task 3");
+        const pendingResult = await server.listTasks(project.data.projectId, "pending_approval");
+        expect(pendingResult.status).toBe('success');
+        expect(pendingResult.data.tasks!.length).toBe(1);
+        expect(pendingResult.data.tasks![0].title).toBe("Task 3");
 
         // Test completed tasks
-        const completedResult = await server.listTasks(project.projectId, "completed");
-        expect(completedResult.tasks!.length).toBe(1);
-        expect(completedResult.tasks![0].title).toBe("Task 2");
+        const completedResult = await server.listTasks(project.data.projectId, "completed");
+        expect(completedResult.status).toBe('success');
+        expect(completedResult.data.tasks!.length).toBe(1);
+        expect(completedResult.data.tasks![0].title).toBe("Task 2");
       });
 
       it('should handle non-existent project ID', async () => {
-        const result = await server.listTasks("non-existent-project", "open");
-        expect(result.status).toBe("error");
-        expect(result.message).toBe("Project not found");
+        await expect(server.listTasks("non-existent-project", "open")).rejects.toMatchObject({
+          code: 'ERR_2000',
+          message: 'Project non-existent-project not found'
+        });
       });
 
       it('should handle empty task list', async () => {
         const project = await server.createProject("Empty Project", []);
-        const result = await server.listTasks(project.projectId, "open");
-        expect(result.tasks!.length).toBe(0);
+        const result = await server.listTasks(project.data.projectId, "open");
+        expect(result.status).toBe('success');
+        expect(result.data.tasks!.length).toBe(0);
       });
     });
   });
 
   describe('Task Recommendations', () => {
     it("should handle tasks with tool and rule recommendations", async () => {
-      const { projectId } = await server.createProject("Test Project", [
+      const createResult = await server.createProject("Test Project", [
         { 
           title: "Test Task", 
           description: "Test Description",
@@ -495,11 +507,12 @@ describe('TaskManager', () => {
           ruleRecommendations: "Review rule Y"
         },
       ]);
+      const projectId = createResult.data.projectId;
       const tasksResponse = await server.listTasks(projectId);
-      if (!('tasks' in tasksResponse) || !tasksResponse.tasks?.length) {
+      if (tasksResponse.status !== 'success' || !tasksResponse.data.tasks?.length) {
         throw new Error('Expected tasks in response');
       }
-      const tasks = tasksResponse.tasks as Task[];
+      const tasks = tasksResponse.data.tasks as Task[];
       const taskId = tasks[0].id;
 
       // Verify initial recommendations
@@ -512,8 +525,9 @@ describe('TaskManager', () => {
         ruleRecommendations: "Review rule W",
       });
 
-      expect(updatedTask.toolRecommendations).toBe("Use tool Z");
-      expect(updatedTask.ruleRecommendations).toBe("Review rule W");
+      expect(updatedTask.status).toBe('success');
+      expect(updatedTask.data.toolRecommendations).toBe("Use tool Z");
+      expect(updatedTask.data.ruleRecommendations).toBe("Review rule W");
 
       // Add new task with recommendations
       await server.addTasksToProject(projectId, [
@@ -526,10 +540,10 @@ describe('TaskManager', () => {
       ]);
 
       const allTasksResponse = await server.listTasks(projectId);
-      if (!('tasks' in allTasksResponse) || !allTasksResponse.tasks?.length) {
+      if (allTasksResponse.status !== 'success' || !allTasksResponse.data.tasks?.length) {
         throw new Error('Expected tasks in response');
       }
-      const allTasks = allTasksResponse.tasks as Task[];
+      const allTasks = allTasksResponse.data.tasks as Task[];
       const newTask = allTasks.find(t => t.title === "Added Task");
       expect(newTask).toBeDefined();
       if (newTask) {
@@ -538,15 +552,16 @@ describe('TaskManager', () => {
       }
     });
 
-    it("should allow tasks with no recommendations", async () => {
-      const { projectId } = await server.createProject("Test Project", [
+    it("should handle tasks with no recommendations", async () => {
+      const createResult = await server.createProject("Test Project", [
         { title: "Test Task", description: "Test Description" },
       ]);
+      const projectId = createResult.data.projectId;
       const tasksResponse = await server.listTasks(projectId);
-      if (!('tasks' in tasksResponse) || !tasksResponse.tasks?.length) {
+      if (tasksResponse.status !== 'success' || !tasksResponse.data.tasks?.length) {
         throw new Error('Expected tasks in response');
       }
-      const tasks = tasksResponse.tasks as Task[];
+      const tasks = tasksResponse.data.tasks as Task[];
       const taskId = tasks[0].id;
 
       // Verify no recommendations
@@ -559,10 +574,10 @@ describe('TaskManager', () => {
       ]);
 
       const allTasksResponse = await server.listTasks(projectId);
-      if (!('tasks' in allTasksResponse) || !allTasksResponse.tasks?.length) {
+      if (allTasksResponse.status !== 'success' || !allTasksResponse.data.tasks?.length) {
         throw new Error('Expected tasks in response');
       }
-      const allTasks = allTasksResponse.tasks as Task[];
+      const allTasks = allTasksResponse.data.tasks as Task[];
       const newTask = allTasks.find(t => t.title === "Added Task");
       expect(newTask).toBeDefined();
       if (newTask) {
@@ -585,13 +600,10 @@ describe('TaskManager', () => {
         ],
         'Test plan',
         true // autoApprove parameter
-      ) as { 
-        projectId: string; 
-        tasks: { id: string }[];
-      };
+      );
       
-      const projectId = createResult.projectId;
-      const taskId = createResult.tasks[0].id;
+      const projectId = createResult.data.projectId;
+      const taskId = createResult.data.tasks[0].id;
       
       // Update the task status to done
       const updatedTask = await server.updateTask(projectId, taskId, {
@@ -600,12 +612,13 @@ describe('TaskManager', () => {
       });
       
       // The task should be automatically approved
-      expect(updatedTask.status).toBe('done');
-      expect(updatedTask.approved).toBe(true);
+      expect(updatedTask.status).toBe('success');
+      expect(updatedTask.data.status).toBe('done');
+      expect(updatedTask.data.approved).toBe(true);
       
       // Verify that we can complete the project without explicitly approving the task
       const approveResult = await server.approveProjectCompletion(projectId);
-      expect(approveResult.status).toBe('project_approved_complete');
+      expect(approveResult.status).toBe('success');
     });
     
     it('should not auto-approve tasks when updating status to done and autoApprove is disabled', async () => {
@@ -620,13 +633,10 @@ describe('TaskManager', () => {
         ],
         'Test plan',
         false // autoApprove parameter
-      ) as { 
-        projectId: string; 
-        tasks: { id: string }[];
-      };
+      );
       
-      const projectId = createResult.projectId;
-      const taskId = createResult.tasks[0].id;
+      const projectId = createResult.data.projectId;
+      const taskId = createResult.data.tasks[0].id;
       
       // Update the task status to done
       const updatedTask = await server.updateTask(projectId, taskId, {
@@ -635,12 +645,15 @@ describe('TaskManager', () => {
       });
       
       // The task should not be automatically approved
-      expect(updatedTask.status).toBe('done');
-      expect(updatedTask.approved).toBe(false);
+      expect(updatedTask.status).toBe('success');
+      expect(updatedTask.data.status).toBe('done');
+      expect(updatedTask.data.approved).toBe(false);
       
       // Verify that we cannot complete the project without explicitly approving the task
-      const approveResult = await server.approveProjectCompletion(projectId);
-      expect(approveResult.status).toBe('error');
+      await expect(server.approveProjectCompletion(projectId)).rejects.toMatchObject({
+        code: 'ERR_3004',
+        message: 'Not all done tasks are approved'
+      });
     });
     
     it('should make autoApprove false by default if not specified', async () => {
@@ -653,13 +666,10 @@ describe('TaskManager', () => {
             description: 'This task should follow the default approval behavior'
           }
         ]
-      ) as { 
-        projectId: string; 
-        tasks: { id: string }[];
-      };
+      );
       
-      const projectId = createResult.projectId;
-      const taskId = createResult.tasks[0].id;
+      const projectId = createResult.data.projectId;
+      const taskId = createResult.data.tasks[0].id;
       
       // Update the task status to done
       const updatedTask = await server.updateTask(projectId, taskId, {
@@ -668,8 +678,9 @@ describe('TaskManager', () => {
       });
       
       // The task should not be automatically approved by default
-      expect(updatedTask.status).toBe('done');
-      expect(updatedTask.approved).toBe(false);
+      expect(updatedTask.status).toBe('success');
+      expect(updatedTask.data.status).toBe('done');
+      expect(updatedTask.data.approved).toBe(false);
     });
   });
 }); 

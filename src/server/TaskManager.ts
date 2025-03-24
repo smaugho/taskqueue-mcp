@@ -1,7 +1,8 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import * as os from "node:os";
-import { Task, TaskManagerFile, TaskState } from "../types/index.js";
+import { Task, TaskManagerFile, TaskState, StandardResponse, ErrorCode } from "../types/index.js";
+import { createError, createSuccessResponse } from "../utils/errors.js";
 
 // Get platform-appropriate app data directory
 const getAppDataDir = () => {
@@ -62,7 +63,11 @@ export class TaskManager {
         allProjectIds.length > 0 ? Math.max(...allProjectIds) : 0;
       this.taskCounter = allTaskIds.length > 0 ? Math.max(...allTaskIds) : 0;
     } catch (error) {
+      // Initialize with empty data for any initialization error
+      // This includes file not found, permission issues, invalid JSON, etc.
       this.data = { projects: [] };
+      this.projectCounter = 0;
+      this.taskCounter = 0;
     }
   }
 
@@ -83,10 +88,17 @@ export class TaskManager {
       );
     } catch (error) {
       if (error instanceof Error && error.message.includes("EROFS")) {
-        console.error("EROFS: read-only file system. Cannot save tasks.");
-        throw error;
+        throw createError(
+          ErrorCode.ReadOnlyFileSystem,
+          "Cannot save tasks: read-only file system",
+          { originalError: error }
+        );
       }
-      throw error;
+      throw createError(
+        ErrorCode.FileWriteError,
+        "Failed to save tasks file",
+        { originalError: error }
+      );
     }
   }
 
@@ -164,8 +176,7 @@ export class TaskManager {
 
     const progressTable = this.formatTaskProgressTable(projectId);
 
-    return {
-      status: "planned",
+    return createSuccessResponse({
       projectId,
       totalTasks: newTasks.length,
       tasks: newTasks.map((t) => ({
@@ -174,20 +185,23 @@ export class TaskManager {
         description: t.description,
       })),
       message: `Tasks have been successfully added. Please use the task tool with 'read' action to retrieve tasks.\n${progressTable}`,
-    };
+    });
   }
 
-  public async getNextTask(projectId: string) {
+  public async getNextTask(projectId: string): Promise<StandardResponse> {
     await this.ensureInitialized();
     const proj = this.data.projects.find((p) => p.projectId === projectId);
     if (!proj) {
-      return { status: "error", message: "Project not found" };
+      throw createError(
+        ErrorCode.ProjectNotFound,
+        `Project ${projectId} not found`
+      );
     }
     if (proj.completed) {
-      return {
-        status: "already_completed",
-        message: "Project already completed.",
-      };
+      throw createError(
+        ErrorCode.ProjectAlreadyCompleted,
+        "Project is already completed"
+      );
     }
     const nextTask = proj.tasks.find((t) => t.status !== "done");
     if (!nextTask) {
@@ -197,38 +211,58 @@ export class TaskManager {
         const progressTable = this.formatTaskProgressTable(projectId);
         return {
           status: "all_tasks_done",
-          message: `All tasks have been completed. Awaiting project completion approval.\n${progressTable}`,
+          data: {
+            message: `All tasks have been completed. Awaiting project completion approval.\n${progressTable}`
+          }
         };
       }
-      return { status: "no_next_task", message: "No undone tasks found." };
+      throw createError(
+        ErrorCode.TaskNotFound,
+        "No undone tasks found"
+      );
     }
 
     const progressTable = this.formatTaskProgressTable(projectId);
     return {
       status: "next_task",
-      task: {
+      data: {
         id: nextTask.id,
         title: nextTask.title,
         description: nextTask.description,
-      },
-      message: `Next task is ready. Task approval will be required after completion.\n${progressTable}`,
+        message: `Next task is ready. Task approval will be required after completion.\n${progressTable}`
+      }
     };
   }
 
   public async approveTaskCompletion(projectId: string, taskId: string) {
     await this.ensureInitialized();
     const proj = this.data.projects.find((p) => p.projectId === projectId);
-    if (!proj) return { status: "error", message: "Project not found" };
+    if (!proj) {
+      throw createError(
+        ErrorCode.ProjectNotFound,
+        `Project ${projectId} not found`
+      );
+    }
     const task = proj.tasks.find((t) => t.id === taskId);
-    if (!task) return { status: "error", message: "Task not found" };
-    if (task.status !== "done") return { status: "error", message: "Task not done yet." };
-    if (task.approved)
-      return { status: "already_approved", message: "Task already approved." };
+    if (!task) {
+      throw createError(
+        ErrorCode.TaskNotFound,
+        `Task ${taskId} not found`
+      );
+    }
+    if (task.status !== "done") {
+      throw createError(
+        ErrorCode.TaskNotDone,
+        "Task not done yet"
+      );
+    }
+    if (task.approved) {
+      return createSuccessResponse({ message: "Task already approved." });
+    }
 
     task.approved = true;
     await this.saveTasks();
-    return {
-      status: "task_approved",
+    return createSuccessResponse({
       projectId: proj.projectId,
       task: {
         id: task.id,
@@ -237,36 +271,49 @@ export class TaskManager {
         completedDetails: task.completedDetails,
         approved: task.approved,
       },
-    };
+    });
   }
 
   public async approveProjectCompletion(projectId: string) {
     await this.ensureInitialized();
     const proj = this.data.projects.find((p) => p.projectId === projectId);
-    if (!proj) return { status: "error", message: "Project not found" };
+    if (!proj) {
+      throw createError(
+        ErrorCode.ProjectNotFound,
+        `Project ${projectId} not found`
+      );
+    }
 
     // Check if project is already completed
     if (proj.completed) {
-      return { status: "error", message: "Project is already completed." };
+      throw createError(
+        ErrorCode.ProjectAlreadyCompleted,
+        "Project is already completed"
+      );
     }
 
     // Check if all tasks are done and approved
     const allDone = proj.tasks.every((t) => t.status === "done");
     if (!allDone) {
-      return { status: "error", message: "Not all tasks are done." };
+      throw createError(
+        ErrorCode.TasksNotAllDone,
+        "Not all tasks are done"
+      );
     }
     const allApproved = proj.tasks.every((t) => t.status === "done" && t.approved);
     if (!allApproved) {
-      return { status: "error", message: "Not all done tasks are approved." };
+      throw createError(
+        ErrorCode.TasksNotAllApproved,
+        "Not all done tasks are approved"
+      );
     }
 
     proj.completed = true;
     await this.saveTasks();
-    return {
-      status: "project_approved_complete",
+    return createSuccessResponse({
       projectId: proj.projectId,
       message: "Project is fully completed and approved.",
-    };
+    });
   }
 
   public async openTaskDetails(taskId: string) {
@@ -274,8 +321,7 @@ export class TaskManager {
     for (const proj of this.data.projects) {
       const target = proj.tasks.find((t) => t.id === taskId);
       if (target) {
-        return {
-          status: "task_details",
+        return createSuccessResponse({
           projectId: proj.projectId,
           initialPrompt: proj.initialPrompt,
           projectPlan: proj.projectPlan,
@@ -288,10 +334,13 @@ export class TaskManager {
             approved: target.approved,
             completedDetails: target.completedDetails,
           },
-        };
+        });
       }
     }
-    return { status: "task_not_found", message: "No such task found" };
+    throw createError(
+      ErrorCode.TaskNotFound,
+      `Task ${taskId} not found`
+    );
   }
 
   public async listProjects(state?: TaskState) {
@@ -315,8 +364,7 @@ export class TaskManager {
     }
 
     const projectsList = this.formatProjectsList();
-    return {
-      status: "projects_listed",
+    return createSuccessResponse({
       message: `Current projects in the system:\n${projectsList}`,
       projects: filteredProjects.map((proj) => ({
         projectId: proj.projectId,
@@ -325,7 +373,7 @@ export class TaskManager {
         completedTasks: proj.tasks.filter((task) => task.status === "done").length,
         approvedTasks: proj.tasks.filter((task) => task.approved).length,
       })),
-    };
+    });
   }
 
   public async listTasks(projectId?: string, state?: TaskState) {
@@ -335,10 +383,10 @@ export class TaskManager {
     if (projectId) {
       const project = this.data.projects.find((p) => p.projectId === projectId);
       if (!project) {
-        return {
-          status: "error",
-          message: "Project not found"
-        };
+        throw createError(
+          ErrorCode.ProjectNotFound,
+          `Project ${projectId} not found`
+        );
       }
     }
 
@@ -363,8 +411,7 @@ export class TaskManager {
       });
     }
 
-    return {
-      status: "tasks_listed",
+    return createSuccessResponse({
       message: `Tasks in the system${projectId ? ` for project ${projectId}` : ""}:\n${tasks.length} tasks found.`,
       tasks: tasks.map(task => ({
         id: task.id,
@@ -376,7 +423,7 @@ export class TaskManager {
         toolRecommendations: task.toolRecommendations,
         ruleRecommendations: task.ruleRecommendations
       }))
-    };
+    });
   }
 
   public async addTasksToProject(
@@ -386,7 +433,10 @@ export class TaskManager {
     await this.ensureInitialized();
     const proj = this.data.projects.find((p) => p.projectId === projectId);
     if (!proj) {
-      return { status: "error", message: "Project not found" };
+      throw createError(
+        ErrorCode.ProjectNotFound,
+        `Project ${projectId} not found`
+      );
     }
 
     const newTasks: Task[] = [];
@@ -408,15 +458,14 @@ export class TaskManager {
     await this.saveTasks();
 
     const progressTable = this.formatTaskProgressTable(projectId);
-    return {
-      status: "tasks_added",
+    return createSuccessResponse({
       message: `Added ${newTasks.length} new tasks to project.\n${progressTable}`,
       newTasks: newTasks.map((t) => ({
         id: t.id,
         title: t.title,
         description: t.description,
       })),
-    };
+    });
   }
 
   public async updateTask(
@@ -434,12 +483,18 @@ export class TaskManager {
     await this.ensureInitialized();
     const project = this.data.projects.find((p) => p.projectId === projectId);
     if (!project) {
-      throw new Error(`Project not found: ${projectId}`);
+      throw createError(
+        ErrorCode.ProjectNotFound,
+        `Project ${projectId} not found`
+      );
     }
 
     const taskIndex = project.tasks.findIndex((t) => t.id === taskId);
     if (taskIndex === -1) {
-      throw new Error(`Task not found: ${taskId}`);
+      throw createError(
+        ErrorCode.TaskNotFound,
+        `Task ${taskId} not found`
+      );
     }
 
     // Update the task with the provided updates
@@ -451,26 +506,63 @@ export class TaskManager {
     }
 
     await this.saveTasks();
-    return project.tasks[taskIndex];
+    return createSuccessResponse(project.tasks[taskIndex]);
   }
 
   public async deleteTask(projectId: string, taskId: string) {
     await this.ensureInitialized();
     const proj = this.data.projects.find((p) => p.projectId === projectId);
-    if (!proj) return { status: "error", message: "Project not found" };
+    if (!proj) {
+      throw createError(
+        ErrorCode.ProjectNotFound,
+        `Project ${projectId} not found`
+      );
+    }
 
     const taskIndex = proj.tasks.findIndex((t) => t.id === taskId);
-    if (taskIndex === -1) return { status: "error", message: "Task not found" };
-    if (proj.tasks[taskIndex].status === "done")
-      return { status: "error", message: "Cannot delete completed task" };
+    if (taskIndex === -1) {
+      throw createError(
+        ErrorCode.TaskNotFound,
+        `Task ${taskId} not found`
+      );
+    }
+    if (proj.tasks[taskIndex].status === "done") {
+      throw createError(
+        ErrorCode.CannotDeleteCompletedTask,
+        "Cannot delete completed task"
+      );
+    }
 
     proj.tasks.splice(taskIndex, 1);
     await this.saveTasks();
 
     const progressTable = this.formatTaskProgressTable(projectId);
-    return {
-      status: "task_deleted",
+    return createSuccessResponse({
       message: `Task ${taskId} has been deleted.\n${progressTable}`,
-    };
+    });
+  }
+
+  public async readProject(projectId: string): Promise<StandardResponse<{
+    projectId: string;
+    initialPrompt: string;
+    projectPlan: string;
+    completed: boolean;
+    tasks: Task[];
+  }>> {
+    await this.ensureInitialized();
+    const project = this.data.projects.find(p => p.projectId === projectId);
+    if (!project) {
+      throw createError(
+        ErrorCode.ProjectNotFound,
+        `Project ${projectId} not found`
+      );
+    }
+    return createSuccessResponse({
+      projectId: project.projectId,
+      initialPrompt: project.initialPrompt,
+      projectPlan: project.projectPlan,
+      completed: project.completed,
+      tasks: project.tasks
+    });
   }
 } 
