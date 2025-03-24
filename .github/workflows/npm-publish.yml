@@ -22,12 +22,54 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Fetch all history for PR message extraction
+      
       - uses: actions/setup-node@v4
         with:
           node-version: 'latest'
+      
+      - name: Get PR Message
+        id: pr_message
+        run: |
+          PR_NUMBER=$(git log -1 --pretty=%B | grep -oP '#\K\d+' || echo "")
+          if [ ! -z "$PR_NUMBER" ]; then
+            PR_MESSAGE=$(gh pr view $PR_NUMBER --json body -q .body || echo "")
+            echo "message<<EOF" >> $GITHUB_OUTPUT
+            echo "$PR_MESSAGE" >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
+          else
+            echo "message=No PR message found" >> $GITHUB_OUTPUT
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      
       - run: npm ci
       - run: npm install -g tsx
-      - run: npm run build  # Add build step here too
-      - uses: JS-DevTools/npm-publish@v3
+      - run: npm run build
+      
+      - name: Publish to NPM
+        id: publish
+        uses: JS-DevTools/npm-publish@v3
         with:
-          token: ${{ secrets.NPM_TOKEN }} 
+          token: ${{ secrets.NPM_TOKEN }}
+      
+      - name: Get package version
+        if: steps.publish.outputs.type != 'none'
+        id: package_version
+        run: echo "version=$(node -p "require('./package.json').version")" >> $GITHUB_OUTPUT
+      
+      - name: Create GitHub Release
+        if: steps.publish.outputs.type != 'none'
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: v${{ steps.package_version.outputs.version }}
+          release_name: Release v${{ steps.package_version.outputs.version }}
+          body: |
+            ${{ steps.pr_message.outputs.message }}
+            
+            Package published to npm: ${{ steps.publish.outputs.version }}
+          draft: false
+          prerelease: false 
