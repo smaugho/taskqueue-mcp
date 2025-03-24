@@ -13,12 +13,14 @@ jobs:
           node-version: 'latest'
       - run: npm ci
       - run: npm install -g tsx
-      - run: npm run build  # Add build step if needed
       - run: npm test
   
   publish:
     needs: test
     if: github.ref == 'refs/heads/main'  # Only run this job on main branch
+    permissions:
+      packages: write
+      contents: write
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

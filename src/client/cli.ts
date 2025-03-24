@@ -4,8 +4,10 @@ import { Command } from "commander";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import * as os from "node:os";
-import { TaskManagerFile } from "../types/index.js";
 import chalk from "chalk";
+import { TaskManagerFile, ErrorCode } from "../types/index.js";
+import { createError, normalizeError } from "../utils/errors.js";
+import { formatCliError } from "./errors.js";
 
 const program = new Command();
 const DEFAULT_PATH = path.join(os.homedir(), "Documents", "tasks.json");
@@ -30,11 +32,21 @@ async function readData(): Promise<TaskManagerFile> {
     try {
       return JSON.parse(data);
     } catch (error) {
-      throw new Error(`Failed to parse JSON data: ${error instanceof Error ? error.message : String(error)}`);
+      throw createError(
+        ErrorCode.FileParseError,
+        "Failed to parse task file",
+        { originalError: error }
+      );
     }
   } catch (error) {
-    console.error(chalk.red(`Error reading task file: ${error instanceof Error ? error.message : String(error)}`));
-    return { projects: [] };
+    if (error instanceof Error && error.message.includes("ENOENT")) {
+      return { projects: [] };
+    }
+    throw createError(
+      ErrorCode.FileReadError,
+      "Failed to read task file",
+      { originalError: error }
+    );
   }
 }
 
@@ -54,8 +66,11 @@ async function writeData(data: TaskManagerFile): Promise<void> {
     await fs.writeFile(TASK_FILE_PATH, JSON.stringify(data, null, 2), "utf-8");
     console.log(chalk.green('Data saved successfully'));
   } catch (error) {
-    console.error(chalk.red(`Error writing to task file: ${error instanceof Error ? error.message : String(error)}`));
-    throw error;
+    throw createError(
+      ErrorCode.FileWriteError,
+      "Failed to write task file",
+      { originalError: error }
+    );
   }
 }
 
@@ -65,10 +80,10 @@ program
   .version("1.0.0");
 
 program
-  .command("approve-task")
+  .command("approve")
   .description("Approve a completed task")
-  .argument("<projectId>", "ID of the project containing the task")
-  .argument("<taskId>", "ID of the task to approve")
+  .argument("<projectId>", "Project ID")
+  .argument("<taskId>", "Task ID")
   .option('-f, --force', 'Force approval even if task is not marked as done')
   .action(async (projectId, taskId, options) => {
     try {
@@ -145,15 +160,15 @@ program
         console.log(chalk.yellow(`${completedTasks - approvedTasks} tasks remaining to be approved.`));
       }
     } catch (error) {
-      console.error(chalk.red(`An error occurred: ${error instanceof Error ? error.message : String(error)}`));
+      console.error(chalk.red(formatCliError(normalizeError(error))));
       process.exit(1);
     }
   });
 
 program
-  .command("approve-project")
-  .description("Approve project completion")
-  .argument("<projectId>", "ID of the project to approve")
+  .command("finalize")
+  .description("Mark a project as complete")
+  .argument("<projectId>", "Project ID")
   .action(async (projectId) => {
     try {
       console.log(chalk.blue(`Approving project ${chalk.bold(projectId)}...`));
@@ -231,7 +246,7 @@ program
       console.log(chalk.blue(`  task-manager-cli list -p ${projectId}`));
 
     } catch (error) {
-      console.error(chalk.red(`An error occurred: ${error instanceof Error ? error.message : String(error)}`));
+      console.error(chalk.red(formatCliError(normalizeError(error))));
       process.exit(1);
     }
   });
@@ -366,7 +381,7 @@ program
         });
       }
     } catch (error) {
-      console.error(chalk.red(`An error occurred: ${error instanceof Error ? error.message : String(error)}`));
+      console.error(chalk.red(formatCliError(normalizeError(error))));
       process.exit(1);
     }
   });

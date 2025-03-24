@@ -130,7 +130,7 @@ describe('MCP Client Integration', () => {
     
     // Parse the project ID from the response
     const responseData = JSON.parse((createResult.content[0] as { text: string }).text);
-    const projectId = responseData.projectId;
+    const projectId = responseData.data.projectId;
     expect(projectId).toBeDefined();
     console.log('Created project with ID:', projectId);
 
@@ -141,7 +141,7 @@ describe('MCP Client Integration', () => {
     }) as ToolResponse;
     expect(listResult.isError).toBeFalsy();
     const projects = JSON.parse((listResult.content[0] as { text: string }).text);
-    expect(projects.projects.some((p: any) => p.projectId === projectId)).toBe(true);
+    expect(projects.data.projects.some((p: any) => p.projectId === projectId)).toBe(true);
     console.log('Project verified in list');
 
     // Get next task
@@ -223,7 +223,7 @@ describe('MCP Client Integration', () => {
     
     // Get the project ID
     const responseData = JSON.parse((createResult.content[0] as { text: string }).text);
-    const projectId = responseData.projectId;
+    const projectId = responseData.data.projectId;
     expect(projectId).toBeDefined();
     console.log('Created auto-approve project with ID:', projectId);
 
@@ -237,6 +237,7 @@ describe('MCP Client Integration', () => {
     expect(nextTaskResult.isError).toBeFalsy();
     const nextTask = JSON.parse((nextTaskResult.content[0] as { text: string }).text);
     expect(nextTask.status).toBe("next_task");
+    expect(nextTask.task).toBeDefined();
     const taskId = nextTask.task.id;
     
     // Mark task as done - we need to mark it as done using the update_task tool
@@ -270,9 +271,9 @@ describe('MCP Client Integration', () => {
     }) as ToolResponse;
     expect(readTaskResult.isError).toBeFalsy();
     const taskDetails = JSON.parse((readTaskResult.content[0] as { text: string }).text);
-    expect(taskDetails.task.status).toBe("done");
-    expect(taskDetails.task.approved).toBe(true);
-    console.log('Task was manually approved:', taskDetails.task.approved);
+    expect(taskDetails.data.task.status).toBe("done");
+    expect(taskDetails.data.task.approved).toBe(true);
+    console.log('Task was manually approved:', taskDetails.data.task.approved);
     
     // Verify we can finalize the project after explicit approval
     const finalizeResult = await client.callTool({

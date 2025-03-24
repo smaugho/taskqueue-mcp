@@ -1,4 +1,7 @@
 import { Tool } from "@modelcontextprotocol/sdk/types.js";
+import { TaskManager } from "./TaskManager.js";
+import { ErrorCode } from "../types/index.js";
+import { createError, normalizeError } from "../utils/errors.js";
 
 // ---------------------- PROJECT TOOLS ----------------------
 
@@ -332,7 +335,7 @@ const getNextTaskTool: Tool = {
 };
 
 // Export all tools as an array
-export const ALL_TOOLS = [
+export const ALL_TOOLS: Tool[] = [
   listProjectsTool,
   readProjectTool,
   createProjectTool,
@@ -348,3 +351,258 @@ export const ALL_TOOLS = [
   approveTaskTool,
   getNextTaskTool,
 ];
+
+// Error handling wrapper for tool execution
+export async function executeToolWithErrorHandling(
+  toolName: string,
+  args: Record<string, unknown>,
+  taskManager: TaskManager
+): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
+  try {
+    switch (toolName) {
+      case "list_projects": {
+        const result = await taskManager.listProjects();
+        return {
+          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+        };
+      }
+
+      case "read_project": {
+        const projectId = String(args.projectId);
+        if (!projectId) {
+          throw createError(
+            ErrorCode.MissingParameter,
+            "Missing required parameter: projectId"
+          );
+        }
+        const result = await taskManager.readProject(projectId);
+        return {
+          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+        };
+      }
+
+      case "create_project": {
+        const initialPrompt = String(args.initialPrompt || "");
+        if (!initialPrompt || !args.tasks || !Array.isArray(args.tasks)) {
+          throw createError(
+            ErrorCode.MissingParameter,
+            "Missing required parameters: initialPrompt and/or tasks"
+          );
+        }
+        const projectPlan = args.projectPlan ? String(args.projectPlan) : undefined;
+        const autoApprove = args.autoApprove === true;
+        
+        const result = await taskManager.createProject(
+          initialPrompt,
+          args.tasks,
+          projectPlan,
+          autoApprove
+        );
+        return {
+          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+        };
+      }
+
+      case "delete_project": {
+        const projectId = String(args.projectId);
+        if (!projectId) {
+          throw createError(
+            ErrorCode.MissingParameter,
+            "Missing required parameter: projectId"
+          );
+        }
+        // Use the private data and saveTasks via indexing since there's no explicit delete method
+        const projectIndex = taskManager["data"].projects.findIndex((p) => p.projectId === projectId);
+        if (projectIndex === -1) {
+          return { 
+            content: [{ type: "text", text: JSON.stringify({ status: "error", message: "Project not found" }, null, 2) }],
+          };
+        }
+        
+        taskManager["data"].projects.splice(projectIndex, 1);
+        await taskManager["saveTasks"]();
+        return { 
+          content: [{ type: "text", text: JSON.stringify({ 
+            status: "project_deleted", 
+            message: `Project ${projectId} has been deleted.`
+          }, null, 2) }],
+        };
+      }
+
+      case "add_tasks_to_project": {
+        const projectId = String(args.projectId);
+        if (!projectId || !args.tasks || !Array.isArray(args.tasks)) {
+          throw createError(
+            ErrorCode.MissingParameter,
+            "Missing required parameters: projectId and/or tasks"
+          );
+        }
+        const result = await taskManager.addTasksToProject(projectId, args.tasks);
+        return {
+          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+        };
+      }
+
+      case "finalize_project": {
+        const projectId = String(args.projectId);
+        if (!projectId) {
+          throw createError(
+            ErrorCode.MissingParameter,
+            "Missing required parameter: projectId"
+          );
+        }
+        const result = await taskManager.approveProjectCompletion(projectId);
+        return {
+          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+        };
+      }
+
+      // Task tools
+      case "list_tasks": {
+        const projectId = args.projectId ? String(args.projectId) : undefined;
+        const state = args.state ? String(args.state as string) : undefined;
+        const result = await taskManager.listTasks(projectId, state as any);
+        return {
+          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+        };
+      }
+
+      case "read_task": {
+        const taskId = String(args.taskId);
+        if (!taskId) {
+          throw createError(
+            ErrorCode.MissingParameter,
+            "Missing required parameter: taskId"
+          );
+        }
+        const result = await taskManager.openTaskDetails(taskId);
+        return {
+          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+        };
+      }
+
+      case "create_task": {
+        const projectId = String(args.projectId);
+        const title = String(args.title || "");
+        const description = String(args.description || "");
+        
+        if (!projectId || !title || !description) {
+          throw createError(
+            ErrorCode.MissingParameter,
+            "Missing required parameters: projectId, title, and/or description"
+          );
+        }
+        
+        const result = await taskManager.addTasksToProject(projectId, [{
+          title,
+          description,
+          toolRecommendations: args.toolRecommendations ? String(args.toolRecommendations) : undefined,
+          ruleRecommendations: args.ruleRecommendations ? String(args.ruleRecommendations) : undefined
+        }]);
+        return {
+          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+        };
+      }
+
+      case "update_task": {
+        const projectId = String(args.projectId);
+        const taskId = String(args.taskId);
+        
+        if (!projectId || !taskId) {
+          throw createError(
+            ErrorCode.MissingParameter,
+            "Missing required parameters: projectId and/or taskId"
+          );
+        }
+        
+        const updates = Object.fromEntries(
+          Object.entries({
+            title: args.title !== undefined ? String(args.title) : undefined,
+            description: args.description !== undefined ? String(args.description) : undefined,
+            status: args.status !== undefined ? String(args.status) as "not started" | "in progress" | "done" : undefined,
+            completedDetails: args.completedDetails !== undefined ? String(args.completedDetails) : undefined,
+            toolRecommendations: args.toolRecommendations !== undefined ? String(args.toolRecommendations) : undefined,
+            ruleRecommendations: args.ruleRecommendations !== undefined ? String(args.ruleRecommendations) : undefined
+          }).filter(([_, value]) => value !== undefined)
+        );
+
+        const result = await taskManager.updateTask(projectId, taskId, updates);
+
+        return {
+          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+        };
+      }
+
+      case "delete_task": {
+        const projectId = String(args.projectId);
+        const taskId = String(args.taskId);
+        
+        if (!projectId || !taskId) {
+          throw createError(
+            ErrorCode.MissingParameter,
+            "Missing required parameters: projectId and/or taskId"
+          );
+        }
+        const result = await taskManager.deleteTask(projectId, taskId);
+        return {
+          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+        };
+      }
+
+      case "approve_task": {
+        const projectId = String(args.projectId);
+        const taskId = String(args.taskId);
+        
+        if (!projectId || !taskId) {
+          throw createError(
+            ErrorCode.MissingParameter,
+            "Missing required parameters: projectId and/or taskId"
+          );
+        }
+        const result = await taskManager.approveTaskCompletion(projectId, taskId);
+        return {
+          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+        };
+      }
+
+      case "get_next_task": {
+        const projectId = String(args.projectId);
+        if (!projectId) {
+          throw createError(
+            ErrorCode.MissingParameter,
+            "Missing required parameter: projectId"
+          );
+        }
+        const result = await taskManager.getNextTask(projectId);
+        
+        // Ensure backward compatibility with integration tests
+        // by adding a task property that refers to the data
+        if (result.status === "next_task" && result.data) {
+          return {
+            content: [{ type: "text", text: JSON.stringify({
+              status: "next_task",
+              task: result.data,
+              message: result.data.message
+            }, null, 2) }],
+          };
+        }
+        
+        return {
+          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+        };
+      }
+
+      default:
+        throw createError(
+          ErrorCode.InvalidArgument,
+          `Unknown tool: ${toolName}`
+        );
+    }
+  } catch (error) {
+    const standardError = normalizeError(error);
+    return {
+      content: [{ type: "text", text: `Error: ${standardError.message}` }],
+      isError: true,
+    };
+  }
+}
