@@ -2,10 +2,15 @@ import { Tool } from "@modelcontextprotocol/sdk/types.js";
 import { TaskManager } from "./TaskManager.js";
 import { ErrorCode } from "../types/index.js";
 import { createError, normalizeError } from "../utils/errors.js";
+import { toolExecutorMap } from "./toolExecutors.js";
 
 // ---------------------- PROJECT TOOLS ----------------------
 
-// List Projects
+/**
+ * List Projects Tool
+ * @param {object} args - A JSON object containing the arguments
+ * @see {listProjectsToolExecutor}
+ */
 const listProjectsTool: Tool = {
   name: "list_projects",
   description: "List all projects in the system and their basic information (ID, initial prompt, task counts), optionally filtered by state (open, pending_approval, completed, all).",
@@ -22,7 +27,11 @@ const listProjectsTool: Tool = {
   },
 };
 
-// Read Project
+/**
+ * Read Project Tool
+ * @param {object} args - A JSON object containing the arguments
+ * @see {readProjectToolExecutor}
+ */
 const readProjectTool: Tool = {
   name: "read_project",
   description: "Read all information for a given project, by its ID, including its tasks' statuses.",
@@ -38,7 +47,11 @@ const readProjectTool: Tool = {
   },
 };
 
-// Create Project
+/**
+ * Create Project Tool
+ * @param {object} args - A JSON object containing the arguments
+ * @see {createProjectToolExecutor}
+ */
 const createProjectTool: Tool = {
   name: "create_project",
   description: "Create a new project with an initial prompt and a list of tasks. This is typically the first step in any workflow.",
@@ -88,7 +101,11 @@ const createProjectTool: Tool = {
   },
 };
 
-// Delete Project
+/**
+ * Delete Project Tool
+ * @param {object} args - A JSON object containing the arguments
+ * @see {deleteProjectToolExecutor}
+ */
 const deleteProjectTool: Tool = {
   name: "delete_project",
   description: "Delete a project and all its associated tasks.",
@@ -104,7 +121,11 @@ const deleteProjectTool: Tool = {
   },
 };
 
-// Add Tasks to Project
+/**
+ * Add Tasks to Project Tool
+ * @param {object} args - A JSON object containing the arguments
+ * @see {addTasksToProjectToolExecutor}
+ */
 const addTasksToProjectTool: Tool = {
   name: "add_tasks_to_project",
   description: "Add new tasks to an existing project.",
@@ -146,7 +167,11 @@ const addTasksToProjectTool: Tool = {
   },
 };
 
-// Finalize Project (Mark as Complete)
+/**
+ * Finalize Project Tool
+ * @param {object} args - A JSON object containing the arguments
+ * @see {finalizeProjectToolExecutor}
+ */
 const finalizeProjectTool: Tool = {
   name: "finalize_project",
   description: "Mark a project as complete. Can only be called when all tasks are both done and approved. This is typically the last step in a project workflow.",
@@ -164,7 +189,11 @@ const finalizeProjectTool: Tool = {
 
 // ---------------------- TASK TOOLS ----------------------
 
-// List Tasks
+/**
+ * List Tasks Tool
+ * @param {object} args - A JSON object containing the arguments
+ * @see {listTasksToolExecutor}
+ */
 const listTasksTool: Tool = {
   name: "list_tasks",
   description: "List all tasks, optionally filtered by project ID and/or state (open, pending_approval, completed, all). Tasks may include tool and rule recommendations to guide their completion.",
@@ -185,7 +214,11 @@ const listTasksTool: Tool = {
   },
 };
 
-// Read Task
+/**
+ * Read Task Tool
+ * @param {object} args - A JSON object containing the arguments
+ * @see {readTaskToolExecutor}
+ */
 const readTaskTool: Tool = {
   name: "read_task",
   description: "Get details of a specific task by its ID. The task may include toolRecommendations and ruleRecommendations fields that should be used to guide task completion.",
@@ -201,7 +234,11 @@ const readTaskTool: Tool = {
   },
 };
 
-// Create Task
+/**
+ * Create Task Tool
+ * @param {object} args - A JSON object containing the arguments
+ * @see {createTaskToolExecutor}
+ */
 const createTaskTool: Tool = {
   name: "create_task",
   description: "Create a new task within an existing project. You can optionally include tool and rule recommendations to guide task completion.",
@@ -233,7 +270,11 @@ const createTaskTool: Tool = {
   }
 };
 
-// Update Task
+/**
+ * Update Task Tool
+ * @param {object} args - A JSON object containing the arguments
+ * @see {updateTaskToolExecutor}
+ */
 const updateTaskTool: Tool = {
   name: "update_task",
   description: "Modify a task's properties. Note: (1) completedDetails are required when setting status to 'done', (2) approved tasks cannot be modified, (3) status must follow valid transitions: not started → in progress → done. You can also update tool and rule recommendations to guide task completion.",
@@ -278,7 +319,11 @@ const updateTaskTool: Tool = {
   },
 };
 
-// Delete Task
+/**
+ * Delete Task Tool
+ * @param {object} args - A JSON object containing the arguments
+ * @see {deleteTaskToolExecutor}
+ */
 const deleteTaskTool: Tool = {
   name: "delete_task",
   description: "Remove a task from a project.",
@@ -298,7 +343,11 @@ const deleteTaskTool: Tool = {
   },
 };
 
-// Approve Task
+/**
+ * Approve Task Tool
+ * @param {object} args - A JSON object containing the arguments
+ * @see {approveTaskToolExecutor}
+ */
 const approveTaskTool: Tool = {
   name: "approve_task",
   description: "Approve a completed task. Tasks must be marked as 'done' with completedDetails before approval. Note: This is a CLI-only operation that requires human intervention.",
@@ -318,7 +367,11 @@ const approveTaskTool: Tool = {
   }
 };
 
-// Get Next Task
+/**
+ * Get Next Task Tool
+ * @param {object} args - A JSON object containing the arguments
+ * @see {getNextTaskToolExecutor}
+ */
 const getNextTaskTool: Tool = {
   name: "get_next_task",
   description: "Get the next task to be done in a project. Returns the first non-approved task in sequence, regardless of status. The task may include toolRecommendations and ruleRecommendations fields that should be used to guide task completion.",
@@ -352,252 +405,31 @@ export const ALL_TOOLS: Tool[] = [
   getNextTaskTool,
 ];
 
-// Error handling wrapper for tool execution
+/**
+ * Executes a tool with error handling and standardized response formatting.
+ * Uses the toolExecutorMap to look up and execute the appropriate tool executor.
+ * 
+ * @param toolName The name of the tool to execute
+ * @param args The arguments to pass to the tool
+ * @param taskManager The TaskManager instance to use
+ * @returns A promise that resolves to the tool's response
+ * @throws {Error} If the tool is not found or if execution fails
+ */
 export async function executeToolWithErrorHandling(
   toolName: string,
   args: Record<string, unknown>,
   taskManager: TaskManager
 ): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
   try {
-    switch (toolName) {
-      case "list_projects": {
-        const result = await taskManager.listProjects();
-        return {
-          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
-        };
-      }
-
-      case "read_project": {
-        const projectId = String(args.projectId);
-        if (!projectId) {
-          throw createError(
-            ErrorCode.MissingParameter,
-            "Missing required parameter: projectId"
-          );
-        }
-        const result = await taskManager.readProject(projectId);
-        return {
-          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
-        };
-      }
-
-      case "create_project": {
-        const initialPrompt = String(args.initialPrompt || "");
-        if (!initialPrompt || !args.tasks || !Array.isArray(args.tasks)) {
-          throw createError(
-            ErrorCode.MissingParameter,
-            "Missing required parameters: initialPrompt and/or tasks"
-          );
-        }
-        const projectPlan = args.projectPlan ? String(args.projectPlan) : undefined;
-        const autoApprove = args.autoApprove === true;
-        
-        const result = await taskManager.createProject(
-          initialPrompt,
-          args.tasks,
-          projectPlan,
-          autoApprove
-        );
-        return {
-          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
-        };
-      }
-
-      case "delete_project": {
-        const projectId = String(args.projectId);
-        if (!projectId) {
-          throw createError(
-            ErrorCode.MissingParameter,
-            "Missing required parameter: projectId"
-          );
-        }
-        // Use the private data and saveTasks via indexing since there's no explicit delete method
-        const projectIndex = taskManager["data"].projects.findIndex((p) => p.projectId === projectId);
-        if (projectIndex === -1) {
-          return { 
-            content: [{ type: "text", text: JSON.stringify({ status: "error", message: "Project not found" }, null, 2) }],
-          };
-        }
-        
-        taskManager["data"].projects.splice(projectIndex, 1);
-        await taskManager["saveTasks"]();
-        return { 
-          content: [{ type: "text", text: JSON.stringify({ 
-            status: "project_deleted", 
-            message: `Project ${projectId} has been deleted.`
-          }, null, 2) }],
-        };
-      }
-
-      case "add_tasks_to_project": {
-        const projectId = String(args.projectId);
-        if (!projectId || !args.tasks || !Array.isArray(args.tasks)) {
-          throw createError(
-            ErrorCode.MissingParameter,
-            "Missing required parameters: projectId and/or tasks"
-          );
-        }
-        const result = await taskManager.addTasksToProject(projectId, args.tasks);
-        return {
-          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
-        };
-      }
-
-      case "finalize_project": {
-        const projectId = String(args.projectId);
-        if (!projectId) {
-          throw createError(
-            ErrorCode.MissingParameter,
-            "Missing required parameter: projectId"
-          );
-        }
-        const result = await taskManager.approveProjectCompletion(projectId);
-        return {
-          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
-        };
-      }
-
-      // Task tools
-      case "list_tasks": {
-        const projectId = args.projectId ? String(args.projectId) : undefined;
-        const state = args.state ? String(args.state as string) : undefined;
-        const result = await taskManager.listTasks(projectId, state as any);
-        return {
-          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
-        };
-      }
-
-      case "read_task": {
-        const taskId = String(args.taskId);
-        if (!taskId) {
-          throw createError(
-            ErrorCode.MissingParameter,
-            "Missing required parameter: taskId"
-          );
-        }
-        const result = await taskManager.openTaskDetails(taskId);
-        return {
-          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
-        };
-      }
-
-      case "create_task": {
-        const projectId = String(args.projectId);
-        const title = String(args.title || "");
-        const description = String(args.description || "");
-        
-        if (!projectId || !title || !description) {
-          throw createError(
-            ErrorCode.MissingParameter,
-            "Missing required parameters: projectId, title, and/or description"
-          );
-        }
-        
-        const result = await taskManager.addTasksToProject(projectId, [{
-          title,
-          description,
-          toolRecommendations: args.toolRecommendations ? String(args.toolRecommendations) : undefined,
-          ruleRecommendations: args.ruleRecommendations ? String(args.ruleRecommendations) : undefined
-        }]);
-        return {
-          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
-        };
-      }
-
-      case "update_task": {
-        const projectId = String(args.projectId);
-        const taskId = String(args.taskId);
-        
-        if (!projectId || !taskId) {
-          throw createError(
-            ErrorCode.MissingParameter,
-            "Missing required parameters: projectId and/or taskId"
-          );
-        }
-        
-        const updates = Object.fromEntries(
-          Object.entries({
-            title: args.title !== undefined ? String(args.title) : undefined,
-            description: args.description !== undefined ? String(args.description) : undefined,
-            status: args.status !== undefined ? String(args.status) as "not started" | "in progress" | "done" : undefined,
-            completedDetails: args.completedDetails !== undefined ? String(args.completedDetails) : undefined,
-            toolRecommendations: args.toolRecommendations !== undefined ? String(args.toolRecommendations) : undefined,
-            ruleRecommendations: args.ruleRecommendations !== undefined ? String(args.ruleRecommendations) : undefined
-          }).filter(([_, value]) => value !== undefined)
-        );
-
-        const result = await taskManager.updateTask(projectId, taskId, updates);
-
-        return {
-          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
-        };
-      }
-
-      case "delete_task": {
-        const projectId = String(args.projectId);
-        const taskId = String(args.taskId);
-        
-        if (!projectId || !taskId) {
-          throw createError(
-            ErrorCode.MissingParameter,
-            "Missing required parameters: projectId and/or taskId"
-          );
-        }
-        const result = await taskManager.deleteTask(projectId, taskId);
-        return {
-          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
-        };
-      }
-
-      case "approve_task": {
-        const projectId = String(args.projectId);
-        const taskId = String(args.taskId);
-        
-        if (!projectId || !taskId) {
-          throw createError(
-            ErrorCode.MissingParameter,
-            "Missing required parameters: projectId and/or taskId"
-          );
-        }
-        const result = await taskManager.approveTaskCompletion(projectId, taskId);
-        return {
-          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
-        };
-      }
-
-      case "get_next_task": {
-        const projectId = String(args.projectId);
-        if (!projectId) {
-          throw createError(
-            ErrorCode.MissingParameter,
-            "Missing required parameter: projectId"
-          );
-        }
-        const result = await taskManager.getNextTask(projectId);
-        
-        // Ensure backward compatibility with integration tests
-        // by adding a task property that refers to the data
-        if (result.status === "next_task" && result.data) {
-          return {
-            content: [{ type: "text", text: JSON.stringify({
-              status: "next_task",
-              task: result.data,
-              message: result.data.message
-            }, null, 2) }],
-          };
-        }
-        
-        return {
-          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
-        };
-      }
-
-      default:
-        throw createError(
-          ErrorCode.InvalidArgument,
-          `Unknown tool: ${toolName}`
-        );
+    const executor = toolExecutorMap.get(toolName);
+    if (!executor) {
+      throw createError(
+        ErrorCode.InvalidArgument,
+        `Unknown tool: ${toolName}`
+      );
     }
+
+    return await executor.execute(taskManager, args);
   } catch (error) {
     const standardError = normalizeError(error);
     return {
