@@ -127,13 +127,13 @@ describe("CLI Integration Tests", () => {
   }, 5000);
 
   it("should handle no matching items gracefully", async () => {
-    // Test no matching projects
+    // Test no matching projects with open state
     const { stdout: noProjects } = await execAsync(`TASK_MANAGER_FILE_PATH=${tasksFilePath} tsx ${CLI_PATH} list -s open -p proj-3`);
-    expect(noProjects).toContain("No tasks match the specified state filter");
+    expect(noProjects).toContain("No tasks found matching state 'open' in project proj-3");
 
-    // Test no matching tasks
+    // Test no matching tasks with completed state
     const { stdout: noTasks } = await execAsync(`TASK_MANAGER_FILE_PATH=${tasksFilePath} tsx ${CLI_PATH} list -s completed -p proj-1`);
-    expect(noTasks).toContain("No tasks match the specified state filter");
+    expect(noTasks).toContain("No tasks found matching state 'completed' in project proj-1");
   }, 5000);
 
   it("should show progress bars and status indicators correctly", async () => {

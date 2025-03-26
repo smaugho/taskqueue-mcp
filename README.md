@@ -1,6 +1,6 @@
 # MCP Task Manager
 
-  MCP Task Manager ([npm package: taskqueue-mcp](https://www.npmjs.com/package/taskqueue-mcp)) is a Model Context Protocol (MCP) server for AI task management. This tool helps AI assistants handle multi-step tasks in a structured way, with optional user approval checkpoints.
+MCP Task Manager ([npm package: taskqueue-mcp](https://www.npmjs.com/package/taskqueue-mcp)) is a Model Context Protocol (MCP) server for AI task management. This tool helps AI assistants handle multi-step tasks in a structured way, with optional user approval checkpoints.
 
 ## Features
 
@@ -27,22 +27,6 @@ Usually you will set the tool configuration in Claude Desktop, Cursor, or anothe
 }
 ```
 
-Or, with a custom tasks.json path:
-
-```json
-{
-  "tools": {
-    "taskqueue": {
-      "command": "npx",
-      "args": ["-y", "taskqueue-mcp"],
-      "env": {
-        "TASK_MANAGER_FILE_PATH": "/path/to/tasks.json"
-      }
-    }
-  }
-}
-```
-
 To use the CLI utility, you can use the following command:
 
 ```bash
@@ -51,7 +35,7 @@ npx task-manager-cli --help
 
 This will show the available commands and options.
 
-## Available Operations
+## Available MCP Tools
 
 The TaskManager now uses a direct tools interface with specific, purpose-built tools for each operation:
 
@@ -143,181 +127,42 @@ This command displays information about all projects in the system or a specific
 - Task details (title, description, status, approval)
 - Progress metrics (approved/completed/total tasks)
 
-## Example Usage
-
-### Creating a Project with Tasks
-
-```javascript
-// Example of how an LLM would use the create_project tool
-{
-  'create_project': {
-    'initialPrompt': "Create a website for a small business",
-    'projectPlan': "We'll create a responsive website with Home, About, Services, and Contact pages",
-    'tasks': [
-      { 
-        'title': "Set up project structure", 
-        'description': "Create repository and initialize with basic HTML/CSS/JS files",
-        'toolRecommendations': "create_directory, create_file, git_init",
-        'ruleRecommendations': "Use consistent file naming, Initialize git repository"
-      },
-      { 
-        'title': "Design homepage", 
-        'description': "Create responsive homepage with navigation and hero section",
-        'toolRecommendations': "html_editor, css_editor, image_optimizer",
-        'ruleRecommendations': "Follow accessibility guidelines (WCAG), Optimize for mobile-first"
-      },
-      { 
-        'title': "Implement about page", 
-        'description': "Create about page with company history and team section",
-        'toolRecommendations': "html_editor, css_editor",
-        'ruleRecommendations': "Use clear and concise language, Include team member photos"
-      }
-  ]
-}
-}
-
-// Response will include:
-// {
-//   status: "planned",
-//   projectId: "proj-1234",
-//   totalTasks: 3,
-//   tasks: [
-//     { id: "task-1", title: "Set up structure", ..., toolRecommendations: "...", ruleRecommendations: "..." },
-//     { id: "task-2", title: "Design homepage", ..., toolRecommendations: "...", ruleRecommendations: "..." },
-//     { id: "task-3", title: "Implement about page", ..., toolRecommendations: "...", ruleRecommendations: "..." }
-//   ],
-//   message: "Project created with 3 tasks"
-// }
-```
-
-### Getting the Next Task
-
-```javascript
-// Example of how an LLM would use the get_next_task tool
-{
-  'get_next_task': {
-    'projectId': "proj-1234"
-  }
-}
-
-// Response will include:
-// {
-//   status: "next_task",
-//   task: {
-//     id: "task-1",
-//     title: "Set up project structure",
-//     description: "Create repository and initialize with basic HTML/CSS/JS files",
-//     status: "not started",
-//     approved: false
-//   },
-//   message: "Retrieved next task"
-// }
-```
-
-### Marking a Task as Done
-
-```javascript
-// Example of how an LLM would use the mark_task_done tool
-{
-  'mark_task_done': {
-    'projectId': "proj-1234",
-    'taskId': "task-1",
-    'completedDetails': "Created repository at github.com/example/business-site and initialized with HTML5 boilerplate, CSS reset, and basic JS structure."  // Required when marking as done
-  }
-}
-
-// Response will include:
-// {
-//   status: "task_marked_done",
-//   task: {
-//     id: "task-1",
-//     title: "Set up project structure",
-//     status: "done",
-//     approved: false,
-//     completedDetails: "Created repository at github.com/example/business-site and initialized with HTML5 boilerplate, CSS reset, and basic JS structure."
-//   },
-//   message: "Task marked as done"
-// }
-```
-
-### Approving a Task (CLI-only operation)
-
-This operation can only be performed by the user through the CLI:
-
-```bash
-npm run approve-task -- proj-1234 task-1
-```
-
-After approval, the LLM can check the task status using `read_task` or get the next task using `get_next_task`.
-
-### Finalizing a Project
-
-```javascript
-// Example of how an LLM would use the finalize_project tool
-// (Called after all tasks are done and approved)
-{
-  'finalize_project': {
-    'projectId': "proj-1234"
-  }
-}
-
-// Response will include:
-// {
-//   status: "project_finalized",
-//   projectId: "proj-1234",
-//   message: "Project has been finalized"
-// }
-```
-
-## Status Codes and Responses
-
-All operations return a status code and message in their response:
-
-### Project Tool Statuses
-- `projects_listed`: Successfully listed all projects
-- `planned`: Successfully created a new project
-- `project_deleted`: Successfully deleted a project
-- `tasks_added`: Successfully added tasks to a project
-- `project_finalized`: Successfully finalized a project
-- `error`: An error occurred (with error message)
-
-### Task Tool Statuses
-- `task_details`: Successfully retrieved task details
-- `task_updated`: Successfully updated a task
-- `task_deleted`: Successfully deleted a task
-- `task_not_found`: Task not found
-- `error`: An error occurred (with error message)
-
-## Structure of the Codebase
-
-```
-src/
-├── index.ts                   # Main entry point
-├── client/
-│   └── cli.ts                 # CLI for user task review and approval
-├── server/
-│   ├── TaskManager.ts         # Core service functionality
-│   └── tools.ts               # MCP tool definitions
-└── types/
-    └── index.ts               # Type definitions and schemas
-```
-
 ## Data Schema and Storage
 
-The task manager stores data in a JSON file with platform-specific default locations:
+### File Location
 
-- **Default locations**: 
-  - **Linux**: `~/.local/share/taskqueue-mcp/tasks.json` (following XDG Base Directory specification)
-  - **macOS**: `~/Library/Application Support/taskqueue-mcp/tasks.json`
-  - **Windows**: `%APPDATA%\taskqueue-mcp\tasks.json` (typically `C:\Users\<username>\AppData\Roaming\taskqueue-mcp\tasks.json`)
-- **Custom location**: Set via `TASK_MANAGER_FILE_PATH` environment variable
+The task manager stores data in a JSON file that must be accessible to both the server and CLI.
 
-```bash
-# Example of setting custom storage location
-TASK_MANAGER_FILE_PATH=/path/to/custom/tasks.json npm start
+The default platform-specific location is:
+   - **Linux**: `~/.local/share/taskqueue-mcp/tasks.json`
+   - **macOS**: `~/Library/Application Support/taskqueue-mcp/tasks.json`
+   - **Windows**: `%APPDATA%\taskqueue-mcp\tasks.json`
+
+Using a custom file path for storing task data is not recommended, because you have to remember to set the same path for both the MCP server and the CLI, or they won't be able to coordinate with each other. But if you do want to use a custom path, you can set the `TASK_MANAGER_FILE_PATH` environment variable in your MCP client configuration:
+
+```json
+{
+  "tools": {
+    "taskqueue": {
+      "command": "npx",
+      "args": ["-y", "taskqueue-mcp"],
+      "env": {
+        "TASK_MANAGER_FILE_PATH": "/path/to/tasks.json"
+      }
+    }
+  }
+}
 ```
 
-The data schema is organized as follows:
+Then, before running the CLI, you should export the same path in your shell:
+
+```bash
+export TASK_MANAGER_FILE_PATH="/path/to/tasks.json"
+```
+
+### Data Schema
+
+The JSON file uses the following structure:
 
 ```
 TaskManagerFile
@@ -336,19 +181,6 @@ TaskManagerFile
         ├── toolRecommendations: string # Suggested tools that might be helpful for this task
         └── ruleRecommendations: string # Suggested rules/guidelines to follow for this task
 ```
-
-The system persists this structure to the JSON file after each operation.
-
-**Explanation of Task Properties:**
-
-- `id`: A unique identifier for the task
-- `title`: A short, descriptive title for the task
-- `description`: A more detailed explanation of the task
-- `status`: The current status of the task (`not started`, `in progress`, or `done`)
-- `approved`: Indicates whether the task has been approved by the user
-- `completedDetails`: Provides details about the task completion (required when `status` is `done`)
-- `toolRecommendations`: A string containing suggested tools (by name or identifier) that might be helpful for completing this task. The LLM can use this to prioritize which tools to consider.
-- `ruleRecommendations`: A string containing suggested rules or guidelines that should be followed while working on this task. This can include things like "ensure all code is commented," "follow accessibility guidelines," or "use the company style guide". The LLM uses these to improve the quality of its work.
 
 ## License
 
