@@ -12,7 +12,7 @@ MCP Task Manager ([npm package: taskqueue-mcp](https://www.npmjs.com/package/tas
 - Task status state management
 - Enhanced CLI for task inspection and management
 
-## Usage
+## Basic Setup
 
 Usually you will set the tool configuration in Claude Desktop, Cursor, or another MCP client as follows:
 
@@ -34,6 +34,40 @@ npx task-manager-cli --help
 ```
 
 This will show the available commands and options.
+
+### Advanced Configuration
+
+The task manager supports multiple LLM providers for generating project plans. You can configure one or more of the following environment variables depending on which providers you want to use:
+
+- `OPENAI_API_KEY`: Required for using OpenAI models (e.g., GPT-4)
+- `GEMINI_API_KEY`: Required for using Google's Gemini models
+- `DEEPSEEK_API_KEY`: Required for using Deepseek models
+
+To generate project plans using the CLI, set these environment variables in your shell:
+
+```bash
+export OPENAI_API_KEY="your-api-key"
+export GEMINI_API_KEY="your-api-key"
+export DEEPSEEK_API_KEY="your-api-key"
+```
+
+Or you can include them in your MCP client configuration to generate project plans with MCP tool calls:
+
+```json
+{
+  "tools": {
+    "taskqueue": {
+      "command": "npx",
+      "args": ["-y", "taskqueue-mcp"],
+      "env": {
+        "OPENAI_API_KEY": "your-api-key",
+        "GEMINI_API_KEY": "your-api-key",
+        "DEEPSEEK_API_KEY": "your-api-key"
+      }
+    }
+  }
+}
+```
 
 ## Available MCP Tools
 
