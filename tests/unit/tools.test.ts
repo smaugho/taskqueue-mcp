@@ -1,4 +1,4 @@
-import { jest, describe, it, expect } from '@jest/globals';
+import { describe, it, expect } from '@jest/globals';
 import { ALL_TOOLS } from '../../src/server/tools.js';
 import { Tool } from '@modelcontextprotocol/sdk/types.js';
 
@@ -12,12 +12,6 @@ interface ToolInputSchema {
   type: string;
   properties: Record<string, SchemaProperty>;
   required?: string[];
-}
-
-interface TaskItemSchema {
-  type: string;
-  properties: Record<string, SchemaProperty>;
-  required: string[];
 }
 
 interface TasksInputSchema {
