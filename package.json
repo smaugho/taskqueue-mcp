@@ -19,7 +19,7 @@
 		"build": "tsc",
 		"start": "node dist/index.js",
 		"dev": "tsc && node dist/index.js",
-		"test": "tsc && NODE_OPTIONS=--experimental-vm-modules jest",
+		"test": "NODE_OPTIONS=--experimental-vm-modules jest",
 		"approve-task": "node dist/src/cli.js approve-task",
 		"list-tasks": "node dist/src/cli.js list"
 	},
