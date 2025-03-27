@@ -1,18 +1,12 @@
-import { describe, it, expect, jest } from '@jest/globals';
+import { describe, it, expect, jest, beforeEach, beforeAll } from '@jest/globals';
 import { ALL_TOOLS } from '../../src/server/tools.js';
-import { VALID_STATUS_TRANSITIONS, Task, StandardResponse, TaskManagerFile } from '../../src/types/index.js';
+import { VALID_STATUS_TRANSITIONS, Task, StandardResponse } from '../../src/types/index.js';
 import type { TaskManager as TaskManagerType } from '../../src/server/TaskManager.js';
-import type { FileSystemService as FileSystemServiceType, InitializedTaskData } from '../../src/server/FileSystemService.js';
+import type { FileSystemService as FileSystemServiceType } from '../../src/server/FileSystemService.js';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import * as fs from 'node:fs/promises';
 import type { generateObject as GenerateObjectType, jsonSchema as JsonSchemaType } from 'ai';
-
-// Mock modules
-jest.unstable_mockModule('../../src/server/FileSystemService.js', () => ({
-  __esModule: true,
-  FileSystemService: jest.fn(),
-}));
 
 jest.unstable_mockModule('ai', () => ({
   __esModule: true,
@@ -35,13 +29,30 @@ jest.unstable_mockModule('@ai-sdk/deepseek', () => ({
   deepseek: jest.fn(),
 }));
 
-// Mock function declarations
-const mockLoadAndInitializeTasks = jest.fn<() => Promise<InitializedTaskData>>();
-const mockSaveTasks = jest.fn<(data: TaskManagerFile) => Promise<void>>();
-const mockCalculateMaxIds = jest.fn<() => Promise<{ maxProjectId: number; maxTaskId: number }>>()
-  .mockResolvedValue({ maxProjectId: 0, maxTaskId: 0 });
-const mockLoadTasks = jest.fn<() => Promise<TaskManagerFile>>()
-  .mockResolvedValue({ projects: [] });
+// Create mock functions for FileSystemService instance methods
+const mockLoadAndInitializeTasks = jest.fn() as jest.MockedFunction<FileSystemServiceType['loadAndInitializeTasks']>;
+const mockSaveTasks = jest.fn() as jest.MockedFunction<FileSystemServiceType['saveTasks']>;
+const mockCalculateMaxIds = jest.fn() as jest.MockedFunction<FileSystemServiceType['calculateMaxIds']>;
+const mockLoadTasks = jest.fn() as jest.MockedFunction<FileSystemServiceType['loadTasks']>;
+
+// Create mock functions for FileSystemService static methods
+const mockGetAppDataDir = jest.fn() as jest.MockedFunction<typeof FileSystemServiceType.getAppDataDir>;
+
+jest.unstable_mockModule('../../src/server/FileSystemService.js', () => {
+  class MockFileSystemService {
+    constructor() {}
+    loadAndInitializeTasks = mockLoadAndInitializeTasks;
+    saveTasks = mockSaveTasks;
+    calculateMaxIds = mockCalculateMaxIds;
+    loadTasks = mockLoadTasks;
+    static getAppDataDir = mockGetAppDataDir;
+  }
+
+  return {
+    __esModule: true,
+    FileSystemService: MockFileSystemService,
+  };
+});
 
 // Variables for dynamically imported modules
 let TaskManager: typeof TaskManagerType;
@@ -51,37 +62,6 @@ let jsonSchema: jest.MockedFunction<typeof JsonSchemaType>;
 
 // Import modules after mocks are registered
 beforeAll(async () => {
-  const taskManagerModule = await import('../../src/server/TaskManager.js');
-  TaskManager = taskManagerModule.TaskManager;
-
-  const fileSystemModule = await import('../../src/server/FileSystemService.js');
-  FileSystemService = fileSystemModule.FileSystemService as jest.MockedClass<typeof FileSystemServiceType>;
-
-  const aiModule = await import('ai');
-  generateObject = aiModule.generateObject as jest.MockedFunction<typeof GenerateObjectType>;
-  jsonSchema = aiModule.jsonSchema as jest.MockedFunction<typeof JsonSchemaType>;
-
-  // Set up FileSystemService mock implementation
-  FileSystemService.mockImplementation((filePath: string) => {
-    const instance = {
-      loadAndInitializeTasks: mockLoadAndInitializeTasks as jest.MockedFunction<() => Promise<InitializedTaskData>>,
-      saveTasks: mockSaveTasks as jest.MockedFunction<(data: TaskManagerFile) => Promise<void>>,
-      calculateMaxIds: mockCalculateMaxIds,
-      loadTasks: mockLoadTasks
-    };
-    Object.defineProperty(instance, 'filePath', {
-      value: filePath,
-      writable: false,
-      enumerable: false
-    });
-    return instance as unknown as jest.Mocked<FileSystemServiceType>;
-  });
-});
-
-beforeEach(() => {
-  // Reset all mocks
-  jest.clearAllMocks();
-  
   // Set default mock implementations
   mockLoadAndInitializeTasks.mockResolvedValue({
     data: { projects: [] },
@@ -89,28 +69,19 @@ beforeEach(() => {
     maxTaskId: 0
   });
   mockSaveTasks.mockResolvedValue(undefined);
+  mockGetAppDataDir.mockReturnValue('/mock/app/data/dir');
+
+  // Import modules after mocks are registered and implemented
+  const taskManagerModule = await import('../../src/server/TaskManager.js');
+  TaskManager = taskManagerModule.TaskManager;
+
+  const fileSystemModule = await import('../../src/server/FileSystemService.js');
+  FileSystemService = fileSystemModule.FileSystemService as jest.MockedClass<typeof FileSystemService>;
+
+  const aiModule = await import('ai');
+  generateObject = aiModule.generateObject as jest.MockedFunction<typeof GenerateObjectType>;
+  jsonSchema = aiModule.jsonSchema as jest.MockedFunction<typeof JsonSchemaType>;
 });
-
-// Define types for our mocks
-type GenerateObjectResponse = {
-  object: {
-    projectPlan: string;
-    tasks: Array<{
-      title: string;
-      description: string;
-      toolRecommendations?: string;
-      ruleRecommendations?: string;
-    }>;
-  };
-};
-
-type GenerateObjectArgs = {
-  model: unknown;
-  schema: unknown;
-  prompt: string;
-};
-
-type GenerateObjectFunction = (args: GenerateObjectArgs) => Promise<GenerateObjectResponse>;
 
 describe('TaskManager', () => {
   let taskManager: InstanceType<typeof TaskManagerType>;
@@ -120,19 +91,11 @@ describe('TaskManager', () => {
   beforeEach(async () => {
     // Reset all mocks
     jest.clearAllMocks();
-    
-    // Reset mock implementations to defaults
-    mockLoadAndInitializeTasks.mockResolvedValue({
-      data: { projects: [] },
-      maxProjectId: 0,
-      maxTaskId: 0
-    });
-    mockSaveTasks.mockResolvedValue(undefined);
-    
+
     // Create temporary directory for test files
     tempDir = path.join(os.tmpdir(), `task-manager-test-${Date.now()}`);
     tasksFilePath = path.join(tempDir, "test-tasks.json");
-    
+  
     // Create a new TaskManager instance for each test
     taskManager = new TaskManager(tasksFilePath);
   });
@@ -885,11 +848,10 @@ describe('TaskManager', () => {
         attachments: ["Spec content 1", "Spec content 2"]
       });
 
-      // Access mock calls via the imported name
-      const lastCall = (generateObject as jest.Mock).mock.calls[0][0] as GenerateObjectArgs;
-      expect(lastCall.prompt).toContain("<prompt>Create based on spec</prompt>");
-      expect(lastCall.prompt).toContain("<attachment>Spec content 1</attachment>");
-      expect(lastCall.prompt).toContain("<attachment>Spec content 2</attachment>");
+      const { prompt } = generateObject.mock.calls[0][0] as { prompt: string };
+      expect(prompt).toContain("<prompt>Create based on spec</prompt>");
+      expect(prompt).toContain("<attachment>Spec content 1</attachment>");
+      expect(prompt).toContain("<attachment>Spec content 2</attachment>");
       expect(result.status).toBe('success');
     });
 

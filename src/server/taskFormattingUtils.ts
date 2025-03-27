@@ -18,7 +18,7 @@ export function formatTaskProgressTable(project: Project | undefined): string {
     const tools = task.toolRecommendations ? "✓" : "-";
     const rules = task.ruleRecommendations ? "✓" : "-";
     // Truncate long descriptions for table view
-    const shortDesc = task.description.length > 50 ? task.description.substring(0, 47) + "..." : task.description;
+    const shortDesc = task.description.length > 50 ? task.description.substring(0, 47) + " ..." : task.description;
     table += `| ${task.id} | ${task.title} | ${shortDesc} | ${status} | ${approved} | ${tools} | ${rules} |\n`;
   }
 
