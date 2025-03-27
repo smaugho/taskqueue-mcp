@@ -11,6 +11,8 @@ import {
 import { TaskManager } from "../server/TaskManager.js";
 import { createError, normalizeError } from "../utils/errors.js";
 import { formatCliError } from "./errors.js";
+import fs from "fs/promises";
+import type { StandardResponse } from "../types/index.js";
 
 const program = new Command();
 
@@ -396,7 +398,12 @@ program
             } else {
               console.log(chalk.yellow(`\nNo tasks found${filterState ? ` matching state '${filterState}'` : ''} in project ${projectId}.`));
             }
-        } catch (error) {
+        } catch (error: unknown) {
+            if (error instanceof Error) {
+              console.error(chalk.red(`Error fetching details for project ${projectId}: ${error.message}`));
+            } else {
+              console.error(chalk.red(`Error fetching details for project ${projectId}: Unknown error`));
+            }
             // Handle ProjectNotFound specifically if desired, otherwise let generic handler catch
              const normalized = normalizeError(error);
             if (normalized.code === ErrorCode.ProjectNotFound) {
@@ -457,8 +464,12 @@ program
                 } else {
                      console.log(chalk.yellow('  No tasks in this project.'));
                 }
-             } catch (error) {
-                  console.error(chalk.red(`Error fetching details for project ${pSummary.projectId}: ${formatCliError(normalizeError(error))}`));
+             } catch (error: unknown) {
+                  if (error instanceof Error) {
+                    console.error(chalk.red(`Error fetching details for project ${pSummary.projectId}: ${error.message}`));
+                  } else {
+                    console.error(chalk.red(`Error fetching details for project ${pSummary.projectId}: Unknown error`));
+                  }
              }
         }
       }
@@ -468,5 +479,93 @@ program
       process.exit(1);
     }
   });
+
+program
+  .command("generate-plan")
+  .description("Generate a project plan using an LLM")
+  .requiredOption("--prompt <text>", "Prompt text to feed to the LLM")
+  .option("--model <model>", "LLM model to use", "gpt-4-turbo")
+  .option("--provider <provider>", "LLM provider to use (openai, google, or deepseek)", "openai")
+  .option("--attachment <file>", "File to attach as context (can be specified multiple times)", collect, [])
+  .action(async (options) => {
+    try {
+      console.log(chalk.blue(`Generating project plan from prompt...`));
+
+      // Read attachment files if provided
+      const attachments: string[] = [];
+      for (const file of options.attachment) {
+        try {
+          const content = await fs.readFile(file, 'utf-8');
+          attachments.push(content);
+        } catch (error: unknown) {
+          if (error instanceof Error) {
+            console.error(chalk.yellow(`Warning: Could not read attachment file ${chalk.bold(file)}: ${error.message}`));
+          } else {
+            console.error(chalk.yellow(`Warning: Could not read attachment file ${chalk.bold(file)}: Unknown error`));
+          }
+        }
+      }
+
+      // Call the generateProjectPlan method
+      const response = await taskManager.generateProjectPlan({
+        prompt: options.prompt,
+        provider: options.provider,
+        model: options.model,
+        attachments,
+      });
+
+      if ('error' in response) {
+        throw response.error;
+      }
+
+      if (response.status !== "success") {
+        throw createError(
+          ErrorCode.InvalidResponseFormat,
+          "Unexpected response format from TaskManager"
+        );
+      }
+
+      const data = response.data as {
+        projectId: string;
+        totalTasks: number;
+        tasks: Array<{
+          id: string;
+          title: string;
+          description: string;
+        }>;
+        message?: string;
+      };
+
+      // Display the results
+      console.log(chalk.green(`✅ Project plan generated successfully!`));
+      console.log(chalk.cyan('\n📋 Project details:'));
+      console.log(`  - ${chalk.bold('Project ID:')} ${data.projectId}`);
+      console.log(`  - ${chalk.bold('Total Tasks:')} ${data.totalTasks}`);
+      
+      console.log(chalk.cyan('\n📝 Tasks:'));
+      data.tasks.forEach((task) => {
+        console.log(`\n  ${chalk.bold(task.id)}:`);
+        console.log(`    Title: ${task.title}`);
+        console.log(`    Description: ${task.description}`);
+      });
+
+      if (data.message) {
+        console.log(`\n${data.message}`);
+      }
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        console.error(chalk.yellow(`Warning: ${err.message}`));
+      } else {
+        const normalized = normalizeError(err);
+        console.error(chalk.red(formatCliError(normalized)));
+      }
+      process.exit(1);
+    }
+  });
+
+// Helper function for collecting multiple values for the same option
+function collect(value: string, previous: string[]) {
+  return previous.concat([value]);
+}
 
 program.parse(process.argv); 

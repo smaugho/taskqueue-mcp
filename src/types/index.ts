@@ -47,6 +47,7 @@ export enum ErrorCode {
   MissingParameter = 'ERR_1000',
   InvalidState = 'ERR_1001',
   InvalidArgument = 'ERR_1002',
+  ConfigurationError = 'ERR_1003',
 
   // Resource Not Found Errors (2000-2999)
   ProjectNotFound = 'ERR_2000',

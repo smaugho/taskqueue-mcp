@@ -1,21 +1,140 @@
-import { describe, it, expect } from '@jest/globals';
+import { describe, it, expect, jest } from '@jest/globals';
 import { ALL_TOOLS } from '../../src/server/tools.js';
-import { VALID_STATUS_TRANSITIONS, Task } from '../../src/types/index.js';
-import { TaskManager } from '../../src/server/TaskManager.js';
+import { VALID_STATUS_TRANSITIONS, Task, StandardResponse, TaskManagerFile } from '../../src/types/index.js';
+import type { TaskManager as TaskManagerType } from '../../src/server/TaskManager.js';
+import type { FileSystemService as FileSystemServiceType, InitializedTaskData } from '../../src/server/FileSystemService.js';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import * as fs from 'node:fs/promises';
+import type { generateObject as GenerateObjectType, jsonSchema as JsonSchemaType } from 'ai';
+
+// Mock modules
+jest.unstable_mockModule('../../src/server/FileSystemService.js', () => ({
+  __esModule: true,
+  FileSystemService: jest.fn(),
+}));
+
+jest.unstable_mockModule('ai', () => ({
+  __esModule: true,
+  generateObject: jest.fn(),
+  jsonSchema: jest.fn(),
+}));
+
+jest.unstable_mockModule('@ai-sdk/openai', () => ({
+  __esModule: true,
+  openai: jest.fn(),
+}));
+
+jest.unstable_mockModule('@ai-sdk/google', () => ({
+  __esModule: true,
+  google: jest.fn(),
+}));
+
+jest.unstable_mockModule('@ai-sdk/deepseek', () => ({
+  __esModule: true,
+  deepseek: jest.fn(),
+}));
+
+// Mock function declarations
+const mockLoadAndInitializeTasks = jest.fn<() => Promise<InitializedTaskData>>();
+const mockSaveTasks = jest.fn<(data: TaskManagerFile) => Promise<void>>();
+const mockCalculateMaxIds = jest.fn<() => Promise<{ maxProjectId: number; maxTaskId: number }>>()
+  .mockResolvedValue({ maxProjectId: 0, maxTaskId: 0 });
+const mockLoadTasks = jest.fn<() => Promise<TaskManagerFile>>()
+  .mockResolvedValue({ projects: [] });
+
+// Variables for dynamically imported modules
+let TaskManager: typeof TaskManagerType;
+let FileSystemService: jest.MockedClass<typeof FileSystemServiceType>;
+let generateObject: jest.MockedFunction<typeof GenerateObjectType>;
+let jsonSchema: jest.MockedFunction<typeof JsonSchemaType>;
+
+// Import modules after mocks are registered
+beforeAll(async () => {
+  const taskManagerModule = await import('../../src/server/TaskManager.js');
+  TaskManager = taskManagerModule.TaskManager;
+
+  const fileSystemModule = await import('../../src/server/FileSystemService.js');
+  FileSystemService = fileSystemModule.FileSystemService as jest.MockedClass<typeof FileSystemServiceType>;
+
+  const aiModule = await import('ai');
+  generateObject = aiModule.generateObject as jest.MockedFunction<typeof GenerateObjectType>;
+  jsonSchema = aiModule.jsonSchema as jest.MockedFunction<typeof JsonSchemaType>;
+
+  // Set up FileSystemService mock implementation
+  FileSystemService.mockImplementation((filePath: string) => {
+    const instance = {
+      loadAndInitializeTasks: mockLoadAndInitializeTasks as jest.MockedFunction<() => Promise<InitializedTaskData>>,
+      saveTasks: mockSaveTasks as jest.MockedFunction<(data: TaskManagerFile) => Promise<void>>,
+      calculateMaxIds: mockCalculateMaxIds,
+      loadTasks: mockLoadTasks
+    };
+    Object.defineProperty(instance, 'filePath', {
+      value: filePath,
+      writable: false,
+      enumerable: false
+    });
+    return instance as unknown as jest.Mocked<FileSystemServiceType>;
+  });
+});
+
+beforeEach(() => {
+  // Reset all mocks
+  jest.clearAllMocks();
+  
+  // Set default mock implementations
+  mockLoadAndInitializeTasks.mockResolvedValue({
+    data: { projects: [] },
+    maxProjectId: 0,
+    maxTaskId: 0
+  });
+  mockSaveTasks.mockResolvedValue(undefined);
+});
+
+// Define types for our mocks
+type GenerateObjectResponse = {
+  object: {
+    projectPlan: string;
+    tasks: Array<{
+      title: string;
+      description: string;
+      toolRecommendations?: string;
+      ruleRecommendations?: string;
+    }>;
+  };
+};
+
+type GenerateObjectArgs = {
+  model: unknown;
+  schema: unknown;
+  prompt: string;
+};
+
+type GenerateObjectFunction = (args: GenerateObjectArgs) => Promise<GenerateObjectResponse>;
 
 describe('TaskManager', () => {
-  let server: TaskManager;
+  let taskManager: InstanceType<typeof TaskManagerType>;
   let tempDir: string;
   let tasksFilePath: string;
 
   beforeEach(async () => {
+    // Reset all mocks
+    jest.clearAllMocks();
+    
+    // Reset mock implementations to defaults
+    mockLoadAndInitializeTasks.mockResolvedValue({
+      data: { projects: [] },
+      maxProjectId: 0,
+      maxTaskId: 0
+    });
+    mockSaveTasks.mockResolvedValue(undefined);
+    
+    // Create temporary directory for test files
     tempDir = path.join(os.tmpdir(), `task-manager-test-${Date.now()}`);
-    await fs.mkdir(tempDir, { recursive: true });
     tasksFilePath = path.join(tempDir, "test-tasks.json");
-    server = new TaskManager(tasksFilePath);
+    
+    // Create a new TaskManager instance for each test
+    taskManager = new TaskManager(tasksFilePath);
   });
 
   afterEach(async () => {
@@ -74,7 +193,7 @@ describe('TaskManager', () => {
 
   describe('Basic Project Operations', () => {
     it('should handle project creation', async () => {
-      const result = await server.createProject(
+      const result = await taskManager.createProject(
         'Test project',
         [
           {
@@ -92,7 +211,7 @@ describe('TaskManager', () => {
 
     it('should handle project listing', async () => {
       // Create a project first
-      await server.createProject(
+      await taskManager.createProject(
         'Test project',
         [
           {
@@ -103,14 +222,14 @@ describe('TaskManager', () => {
         'Test plan'
       );
 
-      const result = await server.listProjects();
+      const result = await taskManager.listProjects();
       expect(result.status).toBe('success');
       expect(result.data.projects).toHaveLength(1);
     });
 
     it('should handle project deletion', async () => {
       // Create a project first
-      const createResult = await server.createProject(
+      const createResult = await taskManager.createProject(
         'Test project',
         [
           {
@@ -122,12 +241,12 @@ describe('TaskManager', () => {
       );
 
       // Delete the project directly using data model access
-      const projectIndex = server["data"].projects.findIndex((p) => p.projectId === createResult.data.projectId);
-      server["data"].projects.splice(projectIndex, 1);
-      await server["saveTasks"]();
+      const projectIndex = taskManager["data"].projects.findIndex((p: { projectId: string }) => p.projectId === createResult.data.projectId);
+      taskManager["data"].projects.splice(projectIndex, 1);
+      await taskManager["saveTasks"]();
       
       // Verify deletion
-      const listResult = await server.listProjects();
+      const listResult = await taskManager.listProjects();
       expect(listResult.data.projects).toHaveLength(0);
     });
   });
@@ -135,7 +254,7 @@ describe('TaskManager', () => {
   describe('Basic Task Operations', () => {
     it('should handle task operations', async () => {
       // Create a project first
-      const createResult = await server.createProject(
+      const createResult = await taskManager.createProject(
         'Test project',
         [
           {
@@ -150,14 +269,14 @@ describe('TaskManager', () => {
       const taskId = createResult.data.tasks[0].id;
 
       // Test task reading
-      const readResult = await server.openTaskDetails(taskId);
+      const readResult = await taskManager.openTaskDetails(taskId);
       expect(readResult.status).toBe('success');
       if (readResult.status === 'success' && readResult.data.task) {
         expect(readResult.data.task.id).toBe(taskId);
       }
 
       // Test task updating
-      const updatedTask = await server.updateTask(projectId, taskId, {
+      const updatedTask = await taskManager.updateTask(projectId, taskId, {
         title: "Updated task",
         description: "Updated description"
       });
@@ -167,14 +286,14 @@ describe('TaskManager', () => {
       expect(updatedTask.data.status).toBe("not started");
       
       // Test status update
-      const updatedStatusTask = await server.updateTask(projectId, taskId, {
+      const updatedStatusTask = await taskManager.updateTask(projectId, taskId, {
         status: 'in progress'
       });
       expect(updatedStatusTask.status).toBe('success');
       expect(updatedStatusTask.data.status).toBe('in progress');
 
       // Test task deletion
-      const deleteResult = await server.deleteTask(
+      const deleteResult = await taskManager.deleteTask(
         projectId,
         taskId
       );
@@ -183,7 +302,7 @@ describe('TaskManager', () => {
     
     it('should get the next task', async () => {
       // Create a project with multiple tasks
-      const createResult = await server.createProject(
+      const createResult = await taskManager.createProject(
         'Test project with multiple tasks',
         [
           {
@@ -200,7 +319,7 @@ describe('TaskManager', () => {
       const projectId = createResult.data.projectId;
       
       // Get the next task
-      const nextTaskResult = await server.getNextTask(projectId);
+      const nextTaskResult = await taskManager.getNextTask(projectId);
       
       expect(nextTaskResult.status).toBe('next_task');
       if (nextTaskResult.status === 'next_task') {
@@ -216,7 +335,7 @@ describe('TaskManager', () => {
     
     beforeEach(async () => {
       // Create a project with two tasks for each test in this group
-      const createResult = await server.createProject(
+      const createResult = await taskManager.createProject(
         'Test project for approval',
         [
           {
@@ -236,7 +355,7 @@ describe('TaskManager', () => {
     });
     
     it('should not approve project if tasks are not done', async () => {
-      await expect(server.approveProjectCompletion(projectId)).rejects.toMatchObject({
+      await expect(taskManager.approveProjectCompletion(projectId)).rejects.toMatchObject({
         code: 'ERR_3003',
         message: 'Not all tasks are done'
       });
@@ -244,16 +363,16 @@ describe('TaskManager', () => {
     
     it('should not approve project if tasks are done but not approved', async () => {
       // Mark both tasks as done
-      await server.updateTask(projectId, taskId1, {
+      await taskManager.updateTask(projectId, taskId1, {
         status: 'done',
         completedDetails: 'Task 1 completed details'
       });
-      await server.updateTask(projectId, taskId2, {
+      await taskManager.updateTask(projectId, taskId2, {
         status: 'done',
         completedDetails: 'Task 2 completed details'
       });
       
-      await expect(server.approveProjectCompletion(projectId)).rejects.toMatchObject({
+      await expect(taskManager.approveProjectCompletion(projectId)).rejects.toMatchObject({
         code: 'ERR_3004',
         message: 'Not all done tasks are approved'
       });
@@ -261,44 +380,44 @@ describe('TaskManager', () => {
     
     it('should approve project when all tasks are done and approved', async () => {
       // Mark both tasks as done and approved
-      await server.updateTask(projectId, taskId1, {
+      await taskManager.updateTask(projectId, taskId1, {
         status: 'done',
         completedDetails: 'Task 1 completed details'
       });
-      await server.updateTask(projectId, taskId2, {
+      await taskManager.updateTask(projectId, taskId2, {
         status: 'done',
         completedDetails: 'Task 2 completed details'
       });
       
       // Approve tasks
-      await server.approveTaskCompletion(projectId, taskId1);
-      await server.approveTaskCompletion(projectId, taskId2);
+      await taskManager.approveTaskCompletion(projectId, taskId1);
+      await taskManager.approveTaskCompletion(projectId, taskId2);
       
-      const result = await server.approveProjectCompletion(projectId);
+      const result = await taskManager.approveProjectCompletion(projectId);
       expect(result.status).toBe('success');
       
       // Verify project is marked as completed
-      const project = server["data"].projects.find(p => p.projectId === projectId);
+      const project = taskManager["data"].projects.find((p: { projectId: string }) => p.projectId === projectId);
       expect(project?.completed).toBe(true);
     });
     
     it('should not allow approving an already completed project', async () => {
       // First approve the project
-      await server.updateTask(projectId, taskId1, {
+      await taskManager.updateTask(projectId, taskId1, {
         status: 'done',
         completedDetails: 'Task 1 completed details'
       });
-      await server.updateTask(projectId, taskId2, {
+      await taskManager.updateTask(projectId, taskId2, {
         status: 'done',
         completedDetails: 'Task 2 completed details'
       });
-      await server.approveTaskCompletion(projectId, taskId1);
-      await server.approveTaskCompletion(projectId, taskId2);
+      await taskManager.approveTaskCompletion(projectId, taskId1);
+      await taskManager.approveTaskCompletion(projectId, taskId2);
       
-      await server.approveProjectCompletion(projectId);
+      await taskManager.approveProjectCompletion(projectId);
       
       // Try to approve again
-      await expect(server.approveProjectCompletion(projectId)).rejects.toMatchObject({
+      await expect(taskManager.approveProjectCompletion(projectId)).rejects.toMatchObject({
         code: 'ERR_3001',
         message: 'Project is already completed'
       });
@@ -309,22 +428,22 @@ describe('TaskManager', () => {
     describe('listProjects', () => {
       it('should list only open projects', async () => {
         // Create some projects. One open and one complete
-        const project1 = await server.createProject("Open Project", [{ title: "Task 1", description: "Desc" }]);
-        const project2 = await server.createProject("Completed project", [{ title: "Task 2", description: "Desc" }]);
+        const project1 = await taskManager.createProject("Open Project", [{ title: "Task 1", description: "Desc" }]);
+        const project2 = await taskManager.createProject("Completed project", [{ title: "Task 2", description: "Desc" }]);
         const proj1Id = project1.data.projectId;
         const proj2Id = project2.data.projectId;
 
         // Complete tasks in project 2
-        await server.updateTask(proj2Id, project2.data.tasks[0].id, {
+        await taskManager.updateTask(proj2Id, project2.data.tasks[0].id, {
           status: 'done',
           completedDetails: 'Completed task details'
         });
-        await server.approveTaskCompletion(proj2Id, project2.data.tasks[0].id);
+        await taskManager.approveTaskCompletion(proj2Id, project2.data.tasks[0].id);
         
         // Approve project 2
-        await server.approveProjectCompletion(proj2Id);
+        await taskManager.approveProjectCompletion(proj2Id);
 
-        const result = await server.listProjects("open");
+        const result = await taskManager.listProjects("open");
         expect(result.status).toBe('success');
         expect(result.data.projects.length).toBe(1);
         expect(result.data.projects[0].projectId).toBe(proj1Id);
@@ -332,25 +451,25 @@ describe('TaskManager', () => {
 
       it('should list only pending approval projects', async () => {
         // Create projects and tasks with varying statuses
-        const project1 = await server.createProject("Pending Approval Project", [{ title: "Task 1", description: "Desc" }]);
-        const project2 = await server.createProject("Completed project", [{ title: "Task 2", description: "Desc" }]);
-        const project3 = await server.createProject("In Progress Project", [{ title: "Task 3", description: "Desc" }]);
+        const project1 = await taskManager.createProject("Pending Approval Project", [{ title: "Task 1", description: "Desc" }]);
+        const project2 = await taskManager.createProject("Completed project", [{ title: "Task 2", description: "Desc" }]);
+        const project3 = await taskManager.createProject("In Progress Project", [{ title: "Task 3", description: "Desc" }]);
 
         // Mark task1 as done but not approved
-        await server.updateTask(project1.data.projectId, project1.data.tasks[0].id, {
+        await taskManager.updateTask(project1.data.projectId, project1.data.tasks[0].id, {
           status: 'done',
           completedDetails: 'Completed task details'
         });
 
         // Complete project 2 fully
-        await server.updateTask(project2.data.projectId, project2.data.tasks[0].id, {
+        await taskManager.updateTask(project2.data.projectId, project2.data.tasks[0].id, {
           status: 'done',
           completedDetails: 'Completed task details'
         });
-        await server.approveTaskCompletion(project2.data.projectId, project2.data.tasks[0].id);
-        await server.approveProjectCompletion(project2.data.projectId);
+        await taskManager.approveTaskCompletion(project2.data.projectId, project2.data.tasks[0].id);
+        await taskManager.approveProjectCompletion(project2.data.projectId);
 
-        const result = await server.listProjects("pending_approval");
+        const result = await taskManager.listProjects("pending_approval");
         expect(result.status).toBe('success');
         expect(result.data.projects.length).toBe(1);
         expect(result.data.projects[0].projectId).toBe(project1.data.projectId);
@@ -358,25 +477,25 @@ describe('TaskManager', () => {
 
       it('should list only completed projects', async () => {
         // Create projects with different states
-        const project1 = await server.createProject("Open Project", [{ title: "Task 1", description: "Desc" }]);
-        const project2 = await server.createProject("Completed project", [{ title: "Task 2", description: "Desc" }]);
-        const project3 = await server.createProject("Pending Project", [{ title: "Task 3", description: "Desc" }]);
+        const project1 = await taskManager.createProject("Open Project", [{ title: "Task 1", description: "Desc" }]);
+        const project2 = await taskManager.createProject("Completed project", [{ title: "Task 2", description: "Desc" }]);
+        const project3 = await taskManager.createProject("Pending Project", [{ title: "Task 3", description: "Desc" }]);
 
         // Complete project 2 fully
-        await server.updateTask(project2.data.projectId, project2.data.tasks[0].id, {
+        await taskManager.updateTask(project2.data.projectId, project2.data.tasks[0].id, {
           status: 'done',
           completedDetails: 'Completed task details'
         });
-        await server.approveTaskCompletion(project2.data.projectId, project2.data.tasks[0].id);
-        await server.approveProjectCompletion(project2.data.projectId);
+        await taskManager.approveTaskCompletion(project2.data.projectId, project2.data.tasks[0].id);
+        await taskManager.approveProjectCompletion(project2.data.projectId);
 
         // Mark project 3's task as done but not approved
-        await server.updateTask(project3.data.projectId, project3.data.tasks[0].id, {
+        await taskManager.updateTask(project3.data.projectId, project3.data.tasks[0].id, {
           status: 'done',
           completedDetails: 'Completed task details'
         });
 
-        const result = await server.listProjects("completed");
+        const result = await taskManager.listProjects("completed");
         expect(result.status).toBe('success');
         expect(result.data.projects.length).toBe(1);
         expect(result.data.projects[0].projectId).toBe(project2.data.projectId);
@@ -384,17 +503,17 @@ describe('TaskManager', () => {
 
       it('should list all projects when state is \'all\'', async () => {
         // Create projects with different states
-        const project1 = await server.createProject("Open Project", [{ title: "Task 1", description: "Desc" }]);
-        const project2 = await server.createProject("Completed project", [{ title: "Task 2", description: "Desc" }]);
-        const project3 = await server.createProject("Pending Project", [{ title: "Task 3", description: "Desc" }]);
+        const project1 = await taskManager.createProject("Open Project", [{ title: "Task 1", description: "Desc" }]);
+        const project2 = await taskManager.createProject("Completed project", [{ title: "Task 2", description: "Desc" }]);
+        const project3 = await taskManager.createProject("Pending Project", [{ title: "Task 3", description: "Desc" }]);
 
-        const result = await server.listProjects("all");
+        const result = await taskManager.listProjects("all");
         expect(result.status).toBe('success');
         expect(result.data.projects.length).toBe(3);
       });
 
       it('should handle empty project list', async () => {
-        const result = await server.listProjects("open");
+        const result = await taskManager.listProjects("open");
         expect(result.status).toBe('success');
         expect(result.data.projects.length).toBe(0);
       });
@@ -403,40 +522,40 @@ describe('TaskManager', () => {
     describe('listTasks', () => {
       it('should list tasks across all projects filtered by state', async () => {
         // Create two projects with tasks in different states
-        const project1 = await server.createProject("Project 1", [
+        const project1 = await taskManager.createProject("Project 1", [
           { title: "Task 1", description: "Open task" },
           { title: "Task 2", description: "Done task" }
         ]);
-        const project2 = await server.createProject("Project 2", [
+        const project2 = await taskManager.createProject("Project 2", [
           { title: "Task 3", description: "Pending approval task" }
         ]);
 
         // Set task states
-        await server.updateTask(project1.data.projectId, project1.data.tasks[1].id, {
+        await taskManager.updateTask(project1.data.projectId, project1.data.tasks[1].id, {
           status: 'done',
           completedDetails: 'Task 2 completed details'
         });
-        await server.approveTaskCompletion(project1.data.projectId, project1.data.tasks[1].id);
+        await taskManager.approveTaskCompletion(project1.data.projectId, project1.data.tasks[1].id);
 
-        await server.updateTask(project2.data.projectId, project2.data.tasks[0].id, {
+        await taskManager.updateTask(project2.data.projectId, project2.data.tasks[0].id, {
           status: 'done',
           completedDetails: 'Task 3 completed details'
         });
 
         // Test open tasks
-        const openResult = await server.listTasks(undefined, "open");
+        const openResult = await taskManager.listTasks(undefined, "open");
         expect(openResult.status).toBe('success');
         expect(openResult.data.tasks!.length).toBe(1);
         expect(openResult.data.tasks![0].title).toBe("Task 1");
 
         // Test pending approval tasks
-        const pendingResult = await server.listTasks(undefined, "pending_approval");
+        const pendingResult = await taskManager.listTasks(undefined, "pending_approval");
         expect(pendingResult.status).toBe('success');
         expect(pendingResult.data.tasks!.length).toBe(1);
         expect(pendingResult.data.tasks![0].title).toBe("Task 3");
 
         // Test completed tasks
-        const completedResult = await server.listTasks(undefined, "completed");
+        const completedResult = await taskManager.listTasks(undefined, "completed");
         expect(completedResult.status).toBe('success');
         expect(completedResult.data.tasks!.length).toBe(1);
         expect(completedResult.data.tasks![0].title).toBe("Task 2");
@@ -444,53 +563,53 @@ describe('TaskManager', () => {
 
       it('should list tasks for specific project filtered by state', async () => {
         // Create a project with tasks in different states
-        const project = await server.createProject("Test Project", [
+        const project = await taskManager.createProject("Test Project", [
           { title: "Task 1", description: "Open task" },
           { title: "Task 2", description: "Done and approved task" },
           { title: "Task 3", description: "Done but not approved task" }
         ]);
 
         // Set task states
-        await server.updateTask(project.data.projectId, project.data.tasks[1].id, {
+        await taskManager.updateTask(project.data.projectId, project.data.tasks[1].id, {
           status: 'done',
           completedDetails: 'Task 2 completed details'
         });
-        await server.approveTaskCompletion(project.data.projectId, project.data.tasks[1].id);
+        await taskManager.approveTaskCompletion(project.data.projectId, project.data.tasks[1].id);
         
-        await server.updateTask(project.data.projectId, project.data.tasks[2].id, {
+        await taskManager.updateTask(project.data.projectId, project.data.tasks[2].id, {
           status: 'done',
           completedDetails: 'Task 3 completed details'
         });
 
         // Test open tasks
-        const openResult = await server.listTasks(project.data.projectId, "open");
+        const openResult = await taskManager.listTasks(project.data.projectId, "open");
         expect(openResult.status).toBe('success');
         expect(openResult.data.tasks!.length).toBe(1);
         expect(openResult.data.tasks![0].title).toBe("Task 1");
 
         // Test pending approval tasks
-        const pendingResult = await server.listTasks(project.data.projectId, "pending_approval");
+        const pendingResult = await taskManager.listTasks(project.data.projectId, "pending_approval");
         expect(pendingResult.status).toBe('success');
         expect(pendingResult.data.tasks!.length).toBe(1);
         expect(pendingResult.data.tasks![0].title).toBe("Task 3");
 
         // Test completed tasks
-        const completedResult = await server.listTasks(project.data.projectId, "completed");
+        const completedResult = await taskManager.listTasks(project.data.projectId, "completed");
         expect(completedResult.status).toBe('success');
         expect(completedResult.data.tasks!.length).toBe(1);
         expect(completedResult.data.tasks![0].title).toBe("Task 2");
       });
 
       it('should handle non-existent project ID', async () => {
-        await expect(server.listTasks("non-existent-project", "open")).rejects.toMatchObject({
+        await expect(taskManager.listTasks("non-existent-project", "open")).rejects.toMatchObject({
           code: 'ERR_2000',
           message: 'Project non-existent-project not found'
         });
       });
 
       it('should handle empty task list', async () => {
-        const project = await server.createProject("Empty Project", []);
-        const result = await server.listTasks(project.data.projectId, "open");
+        const project = await taskManager.createProject("Empty Project", []);
+        const result = await taskManager.listTasks(project.data.projectId, "open");
         expect(result.status).toBe('success');
         expect(result.data.tasks!.length).toBe(0);
       });
@@ -499,7 +618,7 @@ describe('TaskManager', () => {
 
   describe('Task Recommendations', () => {
     it("should handle tasks with tool and rule recommendations", async () => {
-      const createResult = await server.createProject("Test Project", [
+      const createResult = await taskManager.createProject("Test Project", [
         { 
           title: "Test Task", 
           description: "Test Description",
@@ -508,7 +627,7 @@ describe('TaskManager', () => {
         },
       ]);
       const projectId = createResult.data.projectId;
-      const tasksResponse = await server.listTasks(projectId);
+      const tasksResponse = await taskManager.listTasks(projectId);
       if (tasksResponse.status !== 'success' || !tasksResponse.data.tasks?.length) {
         throw new Error('Expected tasks in response');
       }
@@ -520,7 +639,7 @@ describe('TaskManager', () => {
       expect(tasks[0].ruleRecommendations).toBe("Review rule Y");
 
       // Update recommendations
-      const updatedTask = await server.updateTask(projectId, taskId, {
+      const updatedTask = await taskManager.updateTask(projectId, taskId, {
         toolRecommendations: "Use tool Z",
         ruleRecommendations: "Review rule W",
       });
@@ -530,7 +649,7 @@ describe('TaskManager', () => {
       expect(updatedTask.data.ruleRecommendations).toBe("Review rule W");
 
       // Add new task with recommendations
-      await server.addTasksToProject(projectId, [
+      await taskManager.addTasksToProject(projectId, [
         {
           title: "Added Task",
           description: "With recommendations",
@@ -539,7 +658,7 @@ describe('TaskManager', () => {
         }
       ]);
 
-      const allTasksResponse = await server.listTasks(projectId);
+      const allTasksResponse = await taskManager.listTasks(projectId);
       if (allTasksResponse.status !== 'success' || !allTasksResponse.data.tasks?.length) {
         throw new Error('Expected tasks in response');
       }
@@ -553,11 +672,11 @@ describe('TaskManager', () => {
     });
 
     it("should handle tasks with no recommendations", async () => {
-      const createResult = await server.createProject("Test Project", [
+      const createResult = await taskManager.createProject("Test Project", [
         { title: "Test Task", description: "Test Description" },
       ]);
       const projectId = createResult.data.projectId;
-      const tasksResponse = await server.listTasks(projectId);
+      const tasksResponse = await taskManager.listTasks(projectId);
       if (tasksResponse.status !== 'success' || !tasksResponse.data.tasks?.length) {
         throw new Error('Expected tasks in response');
       }
@@ -569,11 +688,11 @@ describe('TaskManager', () => {
       expect(tasks[0].ruleRecommendations).toBeUndefined();
 
       // Add task without recommendations
-      await server.addTasksToProject(projectId, [
+      await taskManager.addTasksToProject(projectId, [
         { title: "Added Task", description: "No recommendations" }
       ]);
 
-      const allTasksResponse = await server.listTasks(projectId);
+      const allTasksResponse = await taskManager.listTasks(projectId);
       if (allTasksResponse.status !== 'success' || !allTasksResponse.data.tasks?.length) {
         throw new Error('Expected tasks in response');
       }
@@ -590,7 +709,7 @@ describe('TaskManager', () => {
   describe('Auto-approval of tasks', () => {
     it('should auto-approve tasks when updating status to done and autoApprove is enabled', async () => {
       // Create a project with autoApprove enabled
-      const createResult = await server.createProject(
+      const createResult = await taskManager.createProject(
         'Auto-approval for updateTask',
         [
           {
@@ -606,7 +725,7 @@ describe('TaskManager', () => {
       const taskId = createResult.data.tasks[0].id;
       
       // Update the task status to done
-      const updatedTask = await server.updateTask(projectId, taskId, {
+      const updatedTask = await taskManager.updateTask(projectId, taskId, {
         status: 'done',
         completedDetails: 'Task completed via updateTask'
       });
@@ -617,13 +736,13 @@ describe('TaskManager', () => {
       expect(updatedTask.data.approved).toBe(true);
       
       // Verify that we can complete the project without explicitly approving the task
-      const approveResult = await server.approveProjectCompletion(projectId);
+      const approveResult = await taskManager.approveProjectCompletion(projectId);
       expect(approveResult.status).toBe('success');
     });
     
     it('should not auto-approve tasks when updating status to done and autoApprove is disabled', async () => {
       // Create a project with autoApprove disabled
-      const createResult = await server.createProject(
+      const createResult = await taskManager.createProject(
         'Manual-approval for updateTask',
         [
           {
@@ -639,7 +758,7 @@ describe('TaskManager', () => {
       const taskId = createResult.data.tasks[0].id;
       
       // Update the task status to done
-      const updatedTask = await server.updateTask(projectId, taskId, {
+      const updatedTask = await taskManager.updateTask(projectId, taskId, {
         status: 'done',
         completedDetails: 'Task completed via updateTask'
       });
@@ -650,7 +769,7 @@ describe('TaskManager', () => {
       expect(updatedTask.data.approved).toBe(false);
       
       // Verify that we cannot complete the project without explicitly approving the task
-      await expect(server.approveProjectCompletion(projectId)).rejects.toMatchObject({
+      await expect(taskManager.approveProjectCompletion(projectId)).rejects.toMatchObject({
         code: 'ERR_3004',
         message: 'Not all done tasks are approved'
       });
@@ -658,7 +777,7 @@ describe('TaskManager', () => {
     
     it('should make autoApprove false by default if not specified', async () => {
       // Create a project without specifying autoApprove
-      const createResult = await server.createProject(
+      const createResult = await taskManager.createProject(
         'Default-approval Project',
         [
           {
@@ -672,7 +791,7 @@ describe('TaskManager', () => {
       const taskId = createResult.data.tasks[0].id;
       
       // Update the task status to done
-      const updatedTask = await server.updateTask(projectId, taskId, {
+      const updatedTask = await taskManager.updateTask(projectId, taskId, {
         status: 'done',
         completedDetails: 'Task completed via updateTask'
       });
@@ -681,6 +800,175 @@ describe('TaskManager', () => {
       expect(updatedTask.status).toBe('success');
       expect(updatedTask.data.status).toBe('done');
       expect(updatedTask.data.approved).toBe(false);
+    });
+  });
+
+  describe('Project Plan Generation', () => {
+    const mockLLMResponse = {
+      projectPlan: "Test project plan",
+      tasks: [
+        {
+          title: "Task 1",
+          description: "Description 1",
+          toolRecommendations: "Use tool X",
+          ruleRecommendations: "Follow rule Y"
+        },
+        {
+          title: "Task 2",
+          description: "Description 2"
+        }
+      ]
+    };
+
+    beforeEach(() => {
+      // Reset mock implementations using the directly imported name
+      (generateObject as jest.Mock).mockClear();
+      (generateObject as jest.Mock).mockImplementation(() => Promise.resolve({ object: mockLLMResponse }));
+      // If jsonSchema is used in these tests, reset it too
+      (jsonSchema as jest.Mock).mockClear();
+    });
+
+    it('should generate a project plan with OpenAI provider', async () => {
+      const result = await taskManager.generateProjectPlan({
+        prompt: "Create a test project",
+        provider: "openai",
+        model: "gpt-4-turbo",
+        attachments: []
+      }) as StandardResponse<{
+        projectId: string;
+        totalTasks: number;
+        tasks: Array<{ id: string; title: string; description: string }>;
+      }>;
+
+      const { openai } = await import('@ai-sdk/openai');
+      expect(openai).toHaveBeenCalledWith("gpt-4-turbo");
+      expect(result.status).toBe('success');
+      if (result.status === 'success') {
+        expect(result.data.projectId).toBeDefined();
+        expect(result.data.totalTasks).toBe(2);
+        expect(result.data.tasks[0].title).toBe("Task 1");
+        expect(result.data.tasks[1].title).toBe("Task 2");
+      }
+    });
+
+    it('should generate a project plan with Google provider', async () => {
+      const result = await taskManager.generateProjectPlan({
+        prompt: "Create a test project",
+        provider: "google",
+        model: "gemini-1.5-pro",
+        attachments: []
+      });
+
+      const { google } = await import('@ai-sdk/google');
+      expect(google).toHaveBeenCalledWith("gemini-1.5-pro");
+      expect(result.status).toBe('success');
+    });
+
+    it('should generate a project plan with Deepseek provider', async () => {
+      const result = await taskManager.generateProjectPlan({
+        prompt: "Create a test project",
+        provider: "deepseek",
+        model: "deepseek-coder",
+        attachments: []
+      });
+
+      const { deepseek } = await import('@ai-sdk/deepseek');
+      expect(deepseek).toHaveBeenCalledWith("deepseek-coder");
+      expect(result.status).toBe('success');
+    });
+
+    it('should handle attachments correctly', async () => {
+      const result = await taskManager.generateProjectPlan({
+        prompt: "Create based on spec",
+        provider: "openai",
+        model: "gpt-4-turbo",
+        attachments: ["Spec content 1", "Spec content 2"]
+      });
+
+      // Access mock calls via the imported name
+      const lastCall = (generateObject as jest.Mock).mock.calls[0][0] as GenerateObjectArgs;
+      expect(lastCall.prompt).toContain("<prompt>Create based on spec</prompt>");
+      expect(lastCall.prompt).toContain("<attachment>Spec content 1</attachment>");
+      expect(lastCall.prompt).toContain("<attachment>Spec content 2</attachment>");
+      expect(result.status).toBe('success');
+    });
+
+    it('should handle NoObjectGeneratedError', async () => {
+      const error = new Error();
+      error.name = 'NoObjectGeneratedError';
+      // Set mock implementation via the imported name
+      (generateObject as jest.Mock).mockImplementation(() => Promise.reject(error));
+
+      await expect(taskManager.generateProjectPlan({
+        prompt: "Create a test project",
+        provider: "openai",
+        model: "gpt-4-turbo",
+        attachments: []
+      })).rejects.toMatchObject({
+        code: 'ERR_1001',
+        message: "The LLM failed to generate a valid project plan. Please try again with a clearer prompt."
+      });
+    });
+
+    it('should handle InvalidJSONError', async () => {
+      const error = new Error();
+      error.name = 'InvalidJSONError';
+      // Set mock implementation via the imported name
+      (generateObject as jest.Mock).mockImplementation(() => Promise.reject(error));
+
+      await expect(taskManager.generateProjectPlan({
+        prompt: "Create a test project",
+        provider: "openai",
+        model: "gpt-4-turbo",
+        attachments: []
+      })).rejects.toMatchObject({
+        code: 'ERR_1001',
+        message: "The LLM generated invalid JSON. Please try again."
+      });
+    });
+
+    it('should handle rate limit errors', async () => {
+      // Set mock implementation via the imported name
+      (generateObject as jest.Mock).mockImplementation(() => Promise.reject(new Error('rate limit exceeded')));
+
+      await expect(taskManager.generateProjectPlan({
+        prompt: "Create a test project",
+        provider: "openai",
+        model: "gpt-4-turbo",
+        attachments: []
+      })).rejects.toMatchObject({
+        code: 'ERR_1002',
+        message: "Rate limit or quota exceeded for the LLM provider. Please try again later."
+      });
+    });
+
+    it('should handle authentication errors', async () => {
+      // Set mock implementation via the imported name
+      (generateObject as jest.Mock).mockImplementation(() => Promise.reject(new Error('authentication failed')));
+
+      await expect(taskManager.generateProjectPlan({
+        prompt: "Create a test project",
+        provider: "openai",
+        model: "gpt-4-turbo",
+        attachments: []
+      })).rejects.toMatchObject({
+        code: 'ERR_1002',
+        message: "Invalid API key or authentication failed. Please check your environment variables."
+      });
+    });
+
+    it('should handle invalid provider', async () => {
+      await expect(taskManager.generateProjectPlan({
+        prompt: "Create a test project",
+        provider: "invalid",
+        model: "gpt-4-turbo",
+        attachments: []
+      })).rejects.toMatchObject({
+        code: 'ERR_1000',
+        message: "Invalid provider: invalid"
+      });
+      // Ensure generateObject wasn't called for invalid provider
+      expect(generateObject).not.toHaveBeenCalled();
     });
   });
 }); 

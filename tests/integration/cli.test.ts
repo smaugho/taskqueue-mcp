@@ -164,4 +164,68 @@ describe("CLI Integration Tests", () => {
     expect(stdout).toContain("Rule Recommendations:");
     expect(stdout).toContain("Follow code style guidelines");
   }, 5000);
+
+  describe("generate-plan command", () => {
+    beforeEach(() => {
+      // Set mock API keys for testing
+      process.env.OPENAI_API_KEY = 'test-key';
+      process.env.GEMINI_API_KEY = 'test-key';
+      process.env.DEEPSEEK_API_KEY = 'test-key';
+    });
+
+    afterEach(() => {
+      delete process.env.OPENAI_API_KEY;
+      delete process.env.GEMINI_API_KEY;
+      delete process.env.DEEPSEEK_API_KEY;
+    });
+
+    it("should generate a project plan with default options", async () => {
+      const { stdout } = await execAsync(
+        `TASK_MANAGER_FILE_PATH=${tasksFilePath} tsx ${CLI_PATH} generate-plan --prompt "Create a simple todo app"`
+      );
+      
+      expect(stdout).toContain("Project plan generated successfully!");
+      expect(stdout).toContain("Project ID:");
+      expect(stdout).toContain("Total Tasks:");
+      expect(stdout).toContain("Tasks:");
+    }, 10000);
+
+    it("should generate a plan with custom provider and model", async () => {
+      const { stdout } = await execAsync(
+        `TASK_MANAGER_FILE_PATH=${tasksFilePath} tsx ${CLI_PATH} generate-plan --prompt "Create a todo app" --provider google --model gemini-1.5-pro`
+      );
+      
+      expect(stdout).toContain("Project plan generated successfully!");
+    }, 10000);
+
+    it("should handle file attachments", async () => {
+      // Create a test file
+      const testFile = path.join(tempDir, "test-spec.txt");
+      await fs.writeFile(testFile, "Test specification content");
+
+      const { stdout } = await execAsync(
+        `TASK_MANAGER_FILE_PATH=${tasksFilePath} tsx ${CLI_PATH} generate-plan --prompt "Create based on spec" --attachment ${testFile}`
+      );
+      
+      expect(stdout).toContain("Project plan generated successfully!");
+    }, 10000);
+
+    it("should handle missing API key gracefully", async () => {
+      delete process.env.OPENAI_API_KEY;
+      
+      const { stderr } = await execAsync(
+        `TASK_MANAGER_FILE_PATH=${tasksFilePath} tsx ${CLI_PATH} generate-plan --prompt "Create a todo app"`
+      ).catch(error => error);
+      
+      expect(stderr).toContain("Missing OPENAI_API_KEY environment variable");
+    }, 5000);
+
+    it("should handle invalid file attachments gracefully", async () => {
+      const { stderr } = await execAsync(
+        `TASK_MANAGER_FILE_PATH=${tasksFilePath} tsx ${CLI_PATH} generate-plan --prompt "Create app" --attachment nonexistent.txt`
+      );
+      
+      expect(stderr).toContain("Warning: Could not read attachment file");
+    }, 5000);
+  });
 }); 
