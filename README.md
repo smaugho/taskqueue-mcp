@@ -103,6 +103,7 @@ Tasks have a status field that can be one of:
 #### Status Transition Rules
 
 The system enforces the following rules for task status transitions:
+
 - Tasks follow a specific workflow with defined valid transitions:
   - From `not started`: Can only move to `in progress`
   - From `in progress`: Can move to either `done` or back to `not started`
@@ -133,7 +134,7 @@ A typical workflow for an LLM using this task manager would be:
 Task approval is controlled exclusively by the human user through the CLI command:
 
 ```bash
-npm run approve-task -- <projectId> <taskId>
+npx task-manager-cli approve-task -- <projectId> <taskId>
 ```
 
 Options:
@@ -146,16 +147,17 @@ Note: Tasks must be marked as "done" with completed details before they can be a
 The CLI provides a command to list all projects and tasks:
 
 ```bash
-npm run list-tasks
+npx task-manager-cli list-tasks
 ```
 
 To view details of a specific project:
 
 ```bash
-npm run list-tasks -- -p <projectId>
+npx task-manager-cli list-tasks -- -p <projectId>
 ```
 
 This command displays information about all projects in the system or a specific project, including:
+
 - Project ID and initial prompt
 - Completion status
 - Task details (title, description, status, approval)

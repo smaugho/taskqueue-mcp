@@ -1,5 +1,3 @@
-#!/usr/bin/env node
-
 import { Command } from "commander";
 import chalk from "chalk";
 import { 
@@ -12,7 +10,6 @@ import { TaskManager } from "../server/TaskManager.js";
 import { createError, normalizeError } from "../utils/errors.js";
 import { formatCliError } from "./errors.js";
 import fs from "fs/promises";
-import type { StandardResponse } from "../types/index.js";
 
 const program = new Command();
 
@@ -575,4 +572,5 @@ function collect(value: string, previous: string[]) {
   return previous.concat([value]);
 }
 
-program.parse(process.argv); 
+// Export program for testing purposes
+export { program };

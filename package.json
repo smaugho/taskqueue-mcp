@@ -7,7 +7,7 @@
 	"type": "module",
 	"bin": {
 		"taskqueue-mcp": "dist/index.js",
-		"task-manager-cli": "dist/src/cli.js"
+		"task-manager-cli": "dist/src/client/index.js"
 	},
 	"files": [
 		"dist/index.js",

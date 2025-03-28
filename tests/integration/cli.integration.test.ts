@@ -5,7 +5,7 @@ import * as os from "node:os";
 import { promisify } from "util";
 
 const execAsync = promisify(exec);
-const CLI_PATH = path.resolve(process.cwd(), "src/client/cli.ts");
+const CLI_PATH = path.resolve(process.cwd(), "dist/src/client/index.js");
 
 describe("CLI Integration Tests", () => {
   let tempDir: string;
