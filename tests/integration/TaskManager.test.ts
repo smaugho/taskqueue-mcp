@@ -14,7 +14,7 @@ describe('TaskManager Integration', () => {
     tempDir = path.join(os.tmpdir(), `task-manager-integration-test-${Date.now()}-${Math.floor(Math.random() * 10000)}`);
     await fs.mkdir(tempDir, { recursive: true });
     testFilePath = path.join(tempDir, 'test-tasks.json');
-    
+
     // Initialize the server with the test file path
     server = new TaskManager(testFilePath);
   });
@@ -171,14 +171,20 @@ describe('TaskManager Integration', () => {
     const taskId2 = createResult.data.tasks[1].id;
 
     // 2. Try to approve project before tasks are done (should fail)
-    await expect(server.approveProjectCompletion(projectId)).rejects.toThrow('Not all tasks are done');
+    await expect(server.approveProjectCompletion(projectId)).rejects.toMatchObject({
+      code: 'ERR_3003',
+      message: 'Not all tasks are done'
+    });
 
     // 3. Mark tasks as done
     await server.updateTask(projectId, taskId1, { status: 'done', completedDetails: 'Task 1 completed details' });
     await server.updateTask(projectId, taskId2, { status: 'done', completedDetails: 'Task 2 completed details' });
 
     // 4. Try to approve project before tasks are approved (should fail)
-    await expect(server.approveProjectCompletion(projectId)).rejects.toThrow('Not all done tasks are approved');
+    await expect(server.approveProjectCompletion(projectId)).rejects.toMatchObject({
+      code: 'ERR_3004',
+      message: 'Not all done tasks are approved'
+    });
 
     // 5. Approve tasks
     await server.approveTaskCompletion(projectId, taskId1);
@@ -195,7 +201,10 @@ describe('TaskManager Integration', () => {
     expect(completedProject).toBeDefined();
 
     // 8. Try to approve again (should fail)
-    await expect(server.approveProjectCompletion(projectId)).rejects.toThrow('Project is already completed');
+    await expect(server.approveProjectCompletion(projectId)).rejects.toMatchObject({
+      code: 'ERR_3001',
+      message: 'Project is already completed'
+    });
   });
 
   it("should handle complex project and task state transitions", async () => {
@@ -250,8 +259,6 @@ describe('TaskManager Integration', () => {
   });
 
   it("should handle tool/rule recommendations end-to-end", async () => {
-    const server = new TaskManager(testFilePath);
-    
     // Create a project with tasks that have recommendations
     const response = await server.createProject("Test Project", [
       {
@@ -380,10 +387,17 @@ describe('TaskManager Integration', () => {
     expect(projectState.data.projects.find(p => p.projectId === project.projectId)).toBeDefined();
   });
 
-  it("should handle multiple concurrent server instances", async () => {
-    // Create two server instances pointing to the same file
-    const server1 = new TaskManager(testFilePath);
-    const server2 = new TaskManager(testFilePath);
+  it("multiple concurrent server instances should synchronize data", async () => {
+    // Create a unique file path just for this test
+    const uniqueTestFilePath = path.join(tempDir, `concurrent-test-${Date.now()}.json`);
+
+    // Create two server instances that would typically be in different processes
+    const server1 = new TaskManager(uniqueTestFilePath);
+    const server2 = new TaskManager(uniqueTestFilePath);
+
+    // Ensure both servers are fully initialized
+    await server1["initialized"];
+    await server2["initialized"];
 
     // Create a project with server1
     const projectResponse = await server1.createProject(
@@ -411,7 +425,7 @@ describe('TaskManager Integration', () => {
     });
     await server1.approveTaskCompletion(project.projectId, project.tasks[0].id);
 
-    // Verify completion with server2
+    // Verify completion with server2 (it should automatically reload latest data)
     const completedTasks = await server2.listTasks(project.projectId, "completed");
     expect(completedTasks.status).toBe('success');
     expect(completedTasks.data.tasks!.length).toBe(1);
@@ -420,10 +434,9 @@ describe('TaskManager Integration', () => {
     const completionResult = await server2.approveProjectCompletion(project.projectId);
     expect(completionResult.status).toBe('success');
 
-    // Verify with server1
+    // Verify with server1 (it should automatically reload latest data)
     const projectState = await server1.listProjects("completed");
     expect(projectState.status).toBe('success');
     expect(projectState.data.projects.find(p => p.projectId === project.projectId)).toBeDefined();
   });
 });
-

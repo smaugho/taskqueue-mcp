@@ -1,6 +1,6 @@
 import { describe, it, expect, jest, beforeEach, beforeAll } from '@jest/globals';
 import { ALL_TOOLS } from '../../src/server/tools.js';
-import { VALID_STATUS_TRANSITIONS, Task, StandardResponse } from '../../src/types/index.js';
+import { VALID_STATUS_TRANSITIONS, Task, StandardResponse, TaskManagerFile } from '../../src/types/index.js';
 import type { TaskManager as TaskManagerType } from '../../src/server/TaskManager.js';
 import type { FileSystemService as FileSystemServiceType } from '../../src/server/FileSystemService.js';
 import * as os from 'node:os';
@@ -34,6 +34,7 @@ const mockLoadAndInitializeTasks = jest.fn() as jest.MockedFunction<FileSystemSe
 const mockSaveTasks = jest.fn() as jest.MockedFunction<FileSystemServiceType['saveTasks']>;
 const mockCalculateMaxIds = jest.fn() as jest.MockedFunction<FileSystemServiceType['calculateMaxIds']>;
 const mockLoadTasks = jest.fn() as jest.MockedFunction<FileSystemServiceType['loadTasks']>;
+const mockReloadTasks = jest.fn() as jest.MockedFunction<FileSystemServiceType['reloadTasks']>;
 
 // Create mock functions for FileSystemService static methods
 const mockGetAppDataDir = jest.fn() as jest.MockedFunction<typeof FileSystemServiceType.getAppDataDir>;
@@ -45,6 +46,7 @@ jest.unstable_mockModule('../../src/server/FileSystemService.js', () => {
     saveTasks = mockSaveTasks;
     calculateMaxIds = mockCalculateMaxIds;
     loadTasks = mockLoadTasks;
+    reloadTasks = mockReloadTasks;
     static getAppDataDir = mockGetAppDataDir;
   }
 
@@ -62,22 +64,6 @@ let jsonSchema: jest.MockedFunction<typeof JsonSchemaType>;
 
 // Import modules after mocks are registered
 beforeAll(async () => {
-  // Set default mock implementations
-  mockLoadAndInitializeTasks.mockResolvedValue({
-    data: { projects: [] },
-    maxProjectId: 0,
-    maxTaskId: 0
-  });
-  mockSaveTasks.mockResolvedValue(undefined);
-  mockGetAppDataDir.mockReturnValue('/mock/app/data/dir');
-
-  // Import modules after mocks are registered and implemented
-  const taskManagerModule = await import('../../src/server/TaskManager.js');
-  TaskManager = taskManagerModule.TaskManager;
-
-  const fileSystemModule = await import('../../src/server/FileSystemService.js');
-  FileSystemService = fileSystemModule.FileSystemService as jest.MockedClass<typeof FileSystemService>;
-
   const aiModule = await import('ai');
   generateObject = aiModule.generateObject as jest.MockedFunction<typeof GenerateObjectType>;
   jsonSchema = aiModule.jsonSchema as jest.MockedFunction<typeof JsonSchemaType>;
@@ -88,16 +74,84 @@ describe('TaskManager', () => {
   let tempDir: string;
   let tasksFilePath: string;
 
+  // --- Stateful Mock Data ---
+  let currentMockData: TaskManagerFile;
+  let currentMaxProjectId: number;
+  let currentMaxTaskId: number;
+
+  // Helper to mimic calculateMaxIds logic (since we can't easily access the real one here)
+  const calculateMockMaxIds = (data: TaskManagerFile): { maxProjectId: number; maxTaskId: number } => {
+      let maxProj = 0;
+      let maxTask = 0;
+      for (const proj of data.projects) {
+          const projNum = parseInt(proj.projectId.split('-')[1] ?? '0', 10);
+          if (!isNaN(projNum) && projNum > maxProj) maxProj = projNum;
+          for (const task of proj.tasks) {
+              const taskNum = parseInt(task.id.split('-')[1] ?? '0', 10);
+              if (!isNaN(taskNum) && taskNum > maxTask) maxTask = taskNum;
+          }
+      }
+      return { maxProjectId: maxProj, maxTaskId: maxTask };
+  };
+
   beforeEach(async () => {
     // Reset all mocks
     jest.clearAllMocks();
 
+    // Reset mock data - this is key to prevent data from persisting between tests
+    currentMockData = { projects: [] };
+    currentMaxProjectId = 0;
+    currentMaxTaskId = 0;
+
+    // Initial load returns current (empty) state and calculated IDs
+    mockLoadAndInitializeTasks.mockImplementation(async () => {
+      const maxIds = calculateMockMaxIds(currentMockData);
+      currentMaxProjectId = maxIds.maxProjectId;
+      currentMaxTaskId = maxIds.maxTaskId;
+      return { data: JSON.parse(JSON.stringify(currentMockData)), maxProjectId: currentMaxProjectId, maxTaskId: currentMaxTaskId };
+    });
+
+    // Save updates the state and recalculates max IDs
+    mockSaveTasks.mockImplementation(async (dataToSave: TaskManagerFile) => {
+      currentMockData = JSON.parse(JSON.stringify(dataToSave)); // Store a deep copy
+      const maxIds = calculateMockMaxIds(currentMockData);
+      currentMaxProjectId = maxIds.maxProjectId;
+      currentMaxTaskId = maxIds.maxTaskId;
+      return undefined;
+    });
+
+    // Reload returns the current state (deep copy)
+    mockReloadTasks.mockImplementation(async () => {
+       return JSON.parse(JSON.stringify(currentMockData));
+    });
+
+    // CalculateMaxIds uses the helper logic on potentially provided data
+    // Note: TaskManager might rely on its *internal* maxId counters more than calling this directly after init
+    mockCalculateMaxIds.mockImplementation((data: TaskManagerFile) => {
+        const result = calculateMockMaxIds(data || currentMockData); // Use provided data or current state
+        return result;
+    });
+
+    // Static method mock
+    mockGetAppDataDir.mockReturnValue('/mock/app/data/dir');
+
+    // Import modules after mocks are registered and implemented
+    const taskManagerModule = await import('../../src/server/TaskManager.js');
+    TaskManager = taskManagerModule.TaskManager;
+  
+    const fileSystemModule = await import('../../src/server/FileSystemService.js');
+    FileSystemService = fileSystemModule.FileSystemService as jest.MockedClass<typeof FileSystemService>;
+
     // Create temporary directory for test files
     tempDir = path.join(os.tmpdir(), `task-manager-test-${Date.now()}`);
     tasksFilePath = path.join(tempDir, "test-tasks.json");
-  
+
     // Create a new TaskManager instance for each test
     taskManager = new TaskManager(tasksFilePath);
+    
+    // This is important - we need to make sure the instance has properly initialized
+    // before running tests
+    await taskManager["initialized"];
   });
 
   afterEach(async () => {
@@ -170,11 +224,17 @@ describe('TaskManager', () => {
       expect(result.status).toBe('success');
       expect(result.data.projectId).toBeDefined();
       expect(result.data.totalTasks).toBe(1);
+
+      // Verify mock state was updated (optional, but good for debugging mocks)
+      expect(currentMockData.projects).toHaveLength(1);
+      expect(currentMockData.projects[0].projectId).toBe(result.data.projectId);
+      expect(currentMaxProjectId).toBe(1); // Assuming it starts at 1
+      expect(currentMaxTaskId).toBe(1);
     });
 
     it('should handle project listing', async () => {
       // Create a project first
-      await taskManager.createProject(
+      const createResult = await taskManager.createProject(
         'Test project',
         [
           {
@@ -867,7 +927,7 @@ describe('TaskManager', () => {
         model: "gpt-4-turbo",
         attachments: []
       })).rejects.toMatchObject({
-        code: 'ERR_1001',
+        code: 'ERR_5001',
         message: "The LLM failed to generate a valid project plan. Please try again with a clearer prompt."
       });
     });
@@ -884,7 +944,7 @@ describe('TaskManager', () => {
         model: "gpt-4-turbo",
         attachments: []
       })).rejects.toMatchObject({
-        code: 'ERR_1001',
+        code: 'ERR_5001',
         message: "The LLM generated invalid JSON. Please try again."
       });
     });
@@ -899,7 +959,7 @@ describe('TaskManager', () => {
         model: "gpt-4-turbo",
         attachments: []
       })).rejects.toMatchObject({
-        code: 'ERR_1002',
+        code: 'ERR_1003',
         message: "Rate limit or quota exceeded for the LLM provider. Please try again later."
       });
     });
@@ -914,7 +974,7 @@ describe('TaskManager', () => {
         model: "gpt-4-turbo",
         attachments: []
       })).rejects.toMatchObject({
-        code: 'ERR_1002',
+        code: 'ERR_1003',
         message: "Invalid API key or authentication failed. Please check your environment variables."
       });
     });
@@ -926,7 +986,7 @@ describe('TaskManager', () => {
         model: "gpt-4-turbo",
         attachments: []
       })).rejects.toMatchObject({
-        code: 'ERR_1000',
+        code: 'ERR_1002',
         message: "Invalid provider: invalid"
       });
       // Ensure generateObject wasn't called for invalid provider

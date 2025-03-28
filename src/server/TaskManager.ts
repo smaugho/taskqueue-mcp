@@ -32,6 +32,19 @@ export class TaskManager {
     await this.initialized;
   }
 
+  /**
+   * Reloads data from disk
+   * This is helpful when the task file might have been modified by another process
+   * Used internally before read operations
+   */
+  public async reloadFromDisk(): Promise<void> {
+    const data = await this.fileSystemService.reloadTasks();
+    this.data = data;
+    const { maxProjectId, maxTaskId } = this.fileSystemService.calculateMaxIds(data);
+    this.projectCounter = maxProjectId;
+    this.taskCounter = maxTaskId;
+  }
+
   private async saveTasks() {
     await this.fileSystemService.saveTasks(this.data);
   }
@@ -43,6 +56,8 @@ export class TaskManager {
     autoApprove?: boolean
   ) {
     await this.ensureInitialized();
+    // Reload before creating to ensure counters are up-to-date
+    await this.reloadFromDisk();
     this.projectCounter += 1;
     const projectId = `proj-${this.projectCounter}`;
 
@@ -221,6 +236,9 @@ export class TaskManager {
 
   public async getNextTask(projectId: string): Promise<StandardResponse> {
     await this.ensureInitialized();
+    // Reload from disk to ensure we have the latest data
+    await this.reloadFromDisk();
+    
     const proj = this.data.projects.find((p) => p.projectId === projectId);
     if (!proj) {
       throw createError(
@@ -267,6 +285,8 @@ export class TaskManager {
 
   public async approveTaskCompletion(projectId: string, taskId: string) {
     await this.ensureInitialized();
+    // Reload before modifying
+    await this.reloadFromDisk();
     const proj = this.data.projects.find((p) => p.projectId === projectId);
     if (!proj) {
       throw createError(
@@ -307,6 +327,8 @@ export class TaskManager {
 
   public async approveProjectCompletion(projectId: string) {
     await this.ensureInitialized();
+    // Reload before modifying
+    await this.reloadFromDisk();
     const proj = this.data.projects.find((p) => p.projectId === projectId);
     if (!proj) {
       throw createError(
@@ -349,6 +371,9 @@ export class TaskManager {
 
   public async openTaskDetails(taskId: string) {
     await this.ensureInitialized();
+    // Reload from disk to ensure we have the latest data
+    await this.reloadFromDisk();
+    
     for (const proj of this.data.projects) {
       const target = proj.tasks.find((t) => t.id === taskId);
       if (target) {
@@ -376,6 +401,8 @@ export class TaskManager {
 
   public async listProjects(state?: TaskState) {
     await this.ensureInitialized();
+    // Reload from disk to ensure we have the latest data
+    await this.reloadFromDisk();
 
     let filteredProjects = [...this.data.projects];
 
@@ -409,6 +436,8 @@ export class TaskManager {
 
   public async listTasks(projectId?: string, state?: TaskState) {
     await this.ensureInitialized();
+    // Reload from disk to ensure we have the latest data
+    await this.reloadFromDisk();
     
     // If projectId is provided, verify the project exists
     if (projectId) {
@@ -462,6 +491,8 @@ export class TaskManager {
     tasks: { title: string; description: string; toolRecommendations?: string; ruleRecommendations?: string }[]
   ) {
     await this.ensureInitialized();
+    // Reload before modifying
+    await this.reloadFromDisk();
     const proj = this.data.projects.find((p) => p.projectId === projectId);
     if (!proj) {
       throw createError(
@@ -512,6 +543,8 @@ export class TaskManager {
     }
   ) {
     await this.ensureInitialized();
+    // Reload before modifying
+    await this.reloadFromDisk();
     const project = this.data.projects.find((p) => p.projectId === projectId);
     if (!project) {
       throw createError(
@@ -542,6 +575,8 @@ export class TaskManager {
 
   public async deleteTask(projectId: string, taskId: string) {
     await this.ensureInitialized();
+    // Reload before modifying
+    await this.reloadFromDisk();
     const proj = this.data.projects.find((p) => p.projectId === projectId);
     if (!proj) {
       throw createError(
@@ -581,6 +616,9 @@ export class TaskManager {
     tasks: Task[];
   }>> {
     await this.ensureInitialized();
+    // Reload from disk to ensure we have the latest data
+    await this.reloadFromDisk();
+    
     const project = this.data.projects.find(p => p.projectId === projectId);
     if (!project) {
       throw createError(

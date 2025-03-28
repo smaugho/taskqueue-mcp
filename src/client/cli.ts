@@ -554,7 +554,12 @@ program
       }
     } catch (err: unknown) {
       if (err instanceof Error) {
-        console.error(chalk.yellow(`Warning: ${err.message}`));
+        // Check for API key related errors and format them appropriately
+        if (err.message.includes('API key') || err.message.includes('authentication') || err.message.includes('unauthorized')) {
+          console.error(chalk.red(`Error: ${err.message}`));
+        } else {
+          console.error(chalk.yellow(`Warning: ${err.message}`));
+        }
       } else {
         const normalized = normalizeError(err);
         console.error(chalk.red(formatCliError(normalized)));
