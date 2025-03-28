@@ -169,48 +169,15 @@ describe("CLI Integration Tests", () => {
     beforeEach(() => {
       // Set mock API keys for testing
       process.env.OPENAI_API_KEY = 'test-key';
-      process.env.GEMINI_API_KEY = 'test-key';
+      process.env.GOOGLE_GENERATIVE_AI_API_KEY = 'test-key';
       process.env.DEEPSEEK_API_KEY = 'test-key';
     });
 
     afterEach(() => {
       delete process.env.OPENAI_API_KEY;
-      delete process.env.GEMINI_API_KEY;
+      delete process.env.GOOGLE_GENERATIVE_AI_API_KEY;
       delete process.env.DEEPSEEK_API_KEY;
     });
-
-    // Skip these tests in the suite since they're better tested in the TaskManager unit tests
-    // The CLI tests would require substantial mocking of AI module calls
-    it.skip("should generate a project plan with default options", async () => {
-      const { stdout } = await execAsync(
-        `TASK_MANAGER_FILE_PATH=${tasksFilePath} tsx ${CLI_PATH} generate-plan --prompt "Create a simple todo app"`
-      );
-      
-      expect(stdout).toContain("Project plan generated successfully!");
-      expect(stdout).toContain("Project ID:");
-      expect(stdout).toContain("Total Tasks:");
-      expect(stdout).toContain("Tasks:");
-    }, 10000);
-
-    it.skip("should generate a plan with custom provider and model", async () => {
-      const { stdout } = await execAsync(
-        `TASK_MANAGER_FILE_PATH=${tasksFilePath} tsx ${CLI_PATH} generate-plan --prompt "Create a todo app" --provider google --model gemini-1.5-pro`
-      );
-      
-      expect(stdout).toContain("Project plan generated successfully!");
-    }, 10000);
-
-    it.skip("should handle file attachments", async () => {
-      // Create a test file
-      const testFile = path.join(tempDir, "test-spec.txt");
-      await fs.writeFile(testFile, "Test specification content");
-
-      const { stdout } = await execAsync(
-        `TASK_MANAGER_FILE_PATH=${tasksFilePath} tsx ${CLI_PATH} generate-plan --prompt "Create based on spec" --attachment ${testFile}`
-      );
-      
-      expect(stdout).toContain("Project plan generated successfully!");
-    }, 10000);
 
     it("should handle missing API key gracefully", async () => {
       delete process.env.OPENAI_API_KEY;

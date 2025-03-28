@@ -344,7 +344,8 @@ program
 
             // Fetch tasks for this project, applying state filter
             const tasksResponse = await taskManager.listTasks(projectId, filterState);
-            const tasks = tasksResponse.data?.tasks || [];
+            // Check for success before accessing data
+            const tasks = tasksResponse.status === 'success' ? tasksResponse.data.tasks : [];
 
             console.log(chalk.cyan(`\n📋 Project ${chalk.bold(projectId)} details:`));
             console.log(`  - ${chalk.bold('Initial Prompt:')} ${project.initialPrompt}`);
@@ -428,7 +429,8 @@ program
       } else {
         // List all projects, applying state filter
         const projectsResponse = await taskManager.listProjects(filterState);
-        const projectsToList = projectsResponse.data?.projects || [];
+        // Check for success before accessing data
+        const projectsToList = projectsResponse.status === 'success' ? projectsResponse.data.projects : [];
 
         if (projectsToList.length === 0) {
           console.log(chalk.yellow(`No projects found${filterState ? ` matching state '${filterState}'` : ''}.`));

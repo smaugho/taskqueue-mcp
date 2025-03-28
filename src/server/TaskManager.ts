@@ -1,5 +1,21 @@
 import * as path from "node:path";
-import { Task, TaskManagerFile, TaskState, StandardResponse, ErrorCode, Project } from "../types/index.js";
+import {
+  Task,
+  TaskManagerFile,
+  TaskState,
+  StandardResponse,
+  ErrorCode,
+  Project,
+  ProjectCreationSuccessData,
+  ApproveTaskSuccessData,
+  ApproveProjectSuccessData,
+  OpenTaskSuccessData,
+  ListProjectsSuccessData,
+  ListTasksSuccessData,
+  AddTasksSuccessData,
+  DeleteTaskSuccessData,
+  ReadProjectSuccessData
+} from "../types/index.js";
 import { createError, createSuccessResponse } from "../utils/errors.js";
 import { generateObject, jsonSchema } from "ai";
 import { formatTaskProgressTable, formatProjectsList } from "./taskFormattingUtils.js";
@@ -54,7 +70,7 @@ export class TaskManager {
     tasks: { title: string; description: string; toolRecommendations?: string; ruleRecommendations?: string }[],
     projectPlan?: string,
     autoApprove?: boolean
-  ) {
+  ): Promise<StandardResponse<ProjectCreationSuccessData>> {
     await this.ensureInitialized();
     // Reload before creating to ensure counters are up-to-date
     await this.reloadFromDisk();
@@ -113,7 +129,7 @@ export class TaskManager {
     provider: string;
     model: string;
     attachments: string[];
-  }): Promise<StandardResponse> {
+  }): Promise<StandardResponse<ProjectCreationSuccessData>> {
     await this.ensureInitialized();
 
     // Wrap prompt and attachments in XML tags
@@ -283,7 +299,7 @@ export class TaskManager {
     };
   }
 
-  public async approveTaskCompletion(projectId: string, taskId: string) {
+  public async approveTaskCompletion(projectId: string, taskId: string): Promise<StandardResponse<ApproveTaskSuccessData>> {
     await this.ensureInitialized();
     // Reload before modifying
     await this.reloadFromDisk();
@@ -308,7 +324,18 @@ export class TaskManager {
       );
     }
     if (task.approved) {
-      return createSuccessResponse({ message: "Task already approved." });
+      // Return the full expected data structure even if already approved
+      return createSuccessResponse({
+        message: "Task already approved.",
+        projectId: proj.projectId,
+        task: {
+          id: task.id,
+          title: task.title,
+          description: task.description,
+          completedDetails: task.completedDetails,
+          approved: task.approved,
+        },
+      });
     }
 
     task.approved = true;
@@ -325,7 +352,7 @@ export class TaskManager {
     });
   }
 
-  public async approveProjectCompletion(projectId: string) {
+  public async approveProjectCompletion(projectId: string): Promise<StandardResponse<ApproveProjectSuccessData>> {
     await this.ensureInitialized();
     // Reload before modifying
     await this.reloadFromDisk();
@@ -369,7 +396,7 @@ export class TaskManager {
     });
   }
 
-  public async openTaskDetails(taskId: string) {
+  public async openTaskDetails(taskId: string): Promise<StandardResponse<OpenTaskSuccessData>> {
     await this.ensureInitialized();
     // Reload from disk to ensure we have the latest data
     await this.reloadFromDisk();
@@ -399,7 +426,7 @@ export class TaskManager {
     );
   }
 
-  public async listProjects(state?: TaskState) {
+  public async listProjects(state?: TaskState): Promise<StandardResponse<ListProjectsSuccessData>> {
     await this.ensureInitialized();
     // Reload from disk to ensure we have the latest data
     await this.reloadFromDisk();
@@ -434,7 +461,7 @@ export class TaskManager {
     });
   }
 
-  public async listTasks(projectId?: string, state?: TaskState) {
+  public async listTasks(projectId?: string, state?: TaskState): Promise<StandardResponse<ListTasksSuccessData>> {
     await this.ensureInitialized();
     // Reload from disk to ensure we have the latest data
     await this.reloadFromDisk();
@@ -489,7 +516,7 @@ export class TaskManager {
   public async addTasksToProject(
     projectId: string,
     tasks: { title: string; description: string; toolRecommendations?: string; ruleRecommendations?: string }[]
-  ) {
+  ): Promise<StandardResponse<AddTasksSuccessData>> {
     await this.ensureInitialized();
     // Reload before modifying
     await this.reloadFromDisk();
@@ -541,7 +568,7 @@ export class TaskManager {
       status?: "not started" | "in progress" | "done";
       completedDetails?: string;
     }
-  ) {
+  ): Promise<StandardResponse<Task>> {
     await this.ensureInitialized();
     // Reload before modifying
     await this.reloadFromDisk();
@@ -573,7 +600,7 @@ export class TaskManager {
     return createSuccessResponse(project.tasks[taskIndex]);
   }
 
-  public async deleteTask(projectId: string, taskId: string) {
+  public async deleteTask(projectId: string, taskId: string): Promise<StandardResponse<DeleteTaskSuccessData>> {
     await this.ensureInitialized();
     // Reload before modifying
     await this.reloadFromDisk();
@@ -608,13 +635,7 @@ export class TaskManager {
     });
   }
 
-  public async readProject(projectId: string): Promise<StandardResponse<{
-    projectId: string;
-    initialPrompt: string;
-    projectPlan: string;
-    completed: boolean;
-    tasks: Task[];
-  }>> {
+  public async readProject(projectId: string): Promise<StandardResponse<ReadProjectSuccessData>> {
     await this.ensureInitialized();
     // Reload from disk to ensure we have the latest data
     await this.reloadFromDisk();
