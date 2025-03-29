@@ -12,7 +12,7 @@ MCP Task Manager ([npm package: taskqueue-mcp](https://www.npmjs.com/package/tas
 - Task status state management
 - Enhanced CLI for task inspection and management
 
-## Usage
+## Basic Setup
 
 Usually you will set the tool configuration in Claude Desktop, Cursor, or another MCP client as follows:
 
@@ -34,6 +34,40 @@ npx task-manager-cli --help
 ```
 
 This will show the available commands and options.
+
+### Advanced Configuration
+
+The task manager supports multiple LLM providers for generating project plans. You can configure one or more of the following environment variables depending on which providers you want to use:
+
+- `OPENAI_API_KEY`: Required for using OpenAI models (e.g., GPT-4)
+- `GOOGLE_GENERATIVE_AI_API_KEY`: Required for using Google's Gemini models
+- `DEEPSEEK_API_KEY`: Required for using Deepseek models
+
+To generate project plans using the CLI, set these environment variables in your shell:
+
+```bash
+export OPENAI_API_KEY="your-api-key"
+export GOOGLE_GENERATIVE_AI_API_KEY="your-api-key"
+export DEEPSEEK_API_KEY="your-api-key"
+```
+
+Or you can include them in your MCP client configuration to generate project plans with MCP tool calls:
+
+```json
+{
+  "tools": {
+    "taskqueue": {
+      "command": "npx",
+      "args": ["-y", "taskqueue-mcp"],
+      "env": {
+        "OPENAI_API_KEY": "your-api-key",
+        "GOOGLE_GENERATIVE_AI_API_KEY": "your-api-key",
+        "DEEPSEEK_API_KEY": "your-api-key"
+      }
+    }
+  }
+}
+```
 
 ## Available MCP Tools
 
@@ -69,6 +103,7 @@ Tasks have a status field that can be one of:
 #### Status Transition Rules
 
 The system enforces the following rules for task status transitions:
+
 - Tasks follow a specific workflow with defined valid transitions:
   - From `not started`: Can only move to `in progress`
   - From `in progress`: Can move to either `done` or back to `not started`
@@ -99,7 +134,7 @@ A typical workflow for an LLM using this task manager would be:
 Task approval is controlled exclusively by the human user through the CLI command:
 
 ```bash
-npm run approve-task -- <projectId> <taskId>
+npx task-manager-cli approve-task -- <projectId> <taskId>
 ```
 
 Options:
@@ -112,16 +147,17 @@ Note: Tasks must be marked as "done" with completed details before they can be a
 The CLI provides a command to list all projects and tasks:
 
 ```bash
-npm run list-tasks
+npx task-manager-cli list-tasks
 ```
 
 To view details of a specific project:
 
 ```bash
-npm run list-tasks -- -p <projectId>
+npx task-manager-cli list-tasks -- -p <projectId>
 ```
 
 This command displays information about all projects in the system or a specific project, including:
+
 - Project ID and initial prompt
 - Completion status
 - Task details (title, description, status, approval)

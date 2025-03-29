@@ -1,0 +1,13 @@
+---
+description: 
+globs: tests/integration/cli.test.ts
+alwaysApply: false
+---
+**CLI Testing**:
+   - When testing CLI commands, pass the environment variable inline:
+     ```typescript
+     const { stdout } = await execAsync(
+       `TASK_MANAGER_FILE_PATH=${tasksFilePath} tsx ${CLI_PATH} command`
+     );
+     ```
+   - Use `tsx` instead of `node` for running TypeScript files directly

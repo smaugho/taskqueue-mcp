@@ -1,141 +1,68 @@
-import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import * as os from "node:os";
-import { Task, TaskManagerFile, TaskState, StandardResponse, ErrorCode } from "../types/index.js";
+import {
+  Task,
+  TaskManagerFile,
+  TaskState,
+  StandardResponse,
+  ErrorCode,
+  Project,
+  ProjectCreationSuccessData,
+  ApproveTaskSuccessData,
+  ApproveProjectSuccessData,
+  OpenTaskSuccessData,
+  ListProjectsSuccessData,
+  ListTasksSuccessData,
+  AddTasksSuccessData,
+  DeleteTaskSuccessData,
+  ReadProjectSuccessData
+} from "../types/index.js";
 import { createError, createSuccessResponse } from "../utils/errors.js";
-
-// Get platform-appropriate app data directory
-const getAppDataDir = () => {
-  const platform = process.platform;
-  
-  if (platform === 'darwin') {
-    // macOS: ~/Library/Application Support/taskqueue-mcp
-    return path.join(os.homedir(), 'Library', 'Application Support', 'taskqueue-mcp');
-  } else if (platform === 'win32') {
-    // Windows: %APPDATA%\taskqueue-mcp (usually C:\Users\<user>\AppData\Roaming\taskqueue-mcp)
-    return path.join(process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming'), 'taskqueue-mcp');
-  } else {
-    // Linux/Unix/Others: Use XDG Base Directory if available, otherwise ~/.local/share/taskqueue-mcp
-    const xdgDataHome = process.env.XDG_DATA_HOME;
-    const linuxDefaultDir = path.join(os.homedir(), '.local', 'share', 'taskqueue-mcp');
-    return xdgDataHome ? path.join(xdgDataHome, 'taskqueue-mcp') : linuxDefaultDir;
-  }
-};
+import { generateObject, jsonSchema } from "ai";
+import { formatTaskProgressTable, formatProjectsList } from "./taskFormattingUtils.js";
+import { FileSystemService } from "./FileSystemService.js";
 
 // Default path follows platform-specific conventions
-const DEFAULT_PATH = path.join(getAppDataDir(), "tasks.json");
+const DEFAULT_PATH = path.join(FileSystemService.getAppDataDir(), "tasks.json");
 const TASK_FILE_PATH = process.env.TASK_MANAGER_FILE_PATH || DEFAULT_PATH;
 
 export class TaskManager {
   private projectCounter = 0;
   private taskCounter = 0;
   private data: TaskManagerFile = { projects: [] };
-  private filePath: string;
+  private fileSystemService: FileSystemService;
   private initialized: Promise<void>;
 
   constructor(testFilePath?: string) {
-    this.filePath = testFilePath || TASK_FILE_PATH;
+    this.fileSystemService = new FileSystemService(testFilePath || TASK_FILE_PATH);
     this.initialized = this.loadTasks();
   }
 
   private async loadTasks() {
-    try {
-      const data = await fs.readFile(this.filePath, "utf-8");
-      this.data = JSON.parse(data);
-      
-      const allTaskIds: number[] = [];
-      const allProjectIds: number[] = [];
-
-      for (const proj of this.data.projects) {
-        const projNum = Number.parseInt(proj.projectId.replace("proj-", ""), 10);
-        if (!Number.isNaN(projNum)) {
-          allProjectIds.push(projNum);
-        }
-        for (const t of proj.tasks) {
-          const tNum = Number.parseInt(t.id.replace("task-", ""), 10);
-          if (!Number.isNaN(tNum)) {
-            allTaskIds.push(tNum);
-          }
-        }
-      }
-
-      this.projectCounter =
-        allProjectIds.length > 0 ? Math.max(...allProjectIds) : 0;
-      this.taskCounter = allTaskIds.length > 0 ? Math.max(...allTaskIds) : 0;
-    } catch (error) {
-      // Initialize with empty data for any initialization error
-      // This includes file not found, permission issues, invalid JSON, etc.
-      this.data = { projects: [] };
-      this.projectCounter = 0;
-      this.taskCounter = 0;
-    }
+    const { data, maxProjectId, maxTaskId } = await this.fileSystemService.loadAndInitializeTasks();
+    this.data = data;
+    this.projectCounter = maxProjectId;
+    this.taskCounter = maxTaskId;
   }
 
   private async ensureInitialized() {
     await this.initialized;
   }
 
+  /**
+   * Reloads data from disk
+   * This is helpful when the task file might have been modified by another process
+   * Used internally before read operations
+   */
+  public async reloadFromDisk(): Promise<void> {
+    const data = await this.fileSystemService.reloadTasks();
+    this.data = data;
+    const { maxProjectId, maxTaskId } = this.fileSystemService.calculateMaxIds(data);
+    this.projectCounter = maxProjectId;
+    this.taskCounter = maxTaskId;
+  }
+
   private async saveTasks() {
-    try {
-      // Ensure directory exists before writing
-      const dir = path.dirname(this.filePath);
-      await fs.mkdir(dir, { recursive: true });
-      
-      await fs.writeFile(
-        this.filePath,
-        JSON.stringify(this.data, null, 2),
-        "utf-8"
-      );
-    } catch (error) {
-      if (error instanceof Error && error.message.includes("EROFS")) {
-        throw createError(
-          ErrorCode.ReadOnlyFileSystem,
-          "Cannot save tasks: read-only file system",
-          { originalError: error }
-        );
-      }
-      throw createError(
-        ErrorCode.FileWriteError,
-        "Failed to save tasks file",
-        { originalError: error }
-      );
-    }
-  }
-
-  private formatTaskProgressTable(projectId: string): string {
-    const proj = this.data.projects.find((p) => p.projectId === projectId);
-    if (!proj) return "Project not found";
-
-    let table = "\nProgress Status:\n";
-    table += "| Task ID | Title | Description | Status | Approval | Tools | Rules |\n";
-    table += "|----------|----------|------|------|----------|--------|--------|\n";
-
-    for (const task of proj.tasks) {
-      const status = task.status === "done" ? "✅ Done" : (task.status === "in progress" ? "🔄 In Progress" : "⏳ Not Started");
-      const approved = task.approved ? "✅ Approved" : "⏳ Pending";
-      const tools = task.toolRecommendations ? "✓" : "-";
-      const rules = task.ruleRecommendations ? "✓" : "-";
-      table += `| ${task.id} | ${task.title} | ${task.description} | ${status} | ${approved} | ${tools} | ${rules} |\n`;
-    }
-
-    return table;
-  }
-
-  private formatProjectsList(): string {
-    let output = "\nProjects List:\n";
-    output +=
-      "| Project ID | Initial Prompt | Total Tasks | Completed | Approved |\n";
-    output +=
-      "|------------|------------------|-------------|-----------|----------|\n";
-
-    for (const proj of this.data.projects) {
-      const totalTasks = proj.tasks.length;
-      const completedTasks = proj.tasks.filter((t) => t.status === "done").length;
-      const approvedTasks = proj.tasks.filter((t) => t.approved).length;
-      output += `| ${proj.projectId} | ${proj.initialPrompt.substring(0, 30)}${proj.initialPrompt.length > 30 ? "..." : ""} | ${totalTasks} | ${completedTasks} | ${approvedTasks} |\n`;
-    }
-
-    return output;
+    await this.fileSystemService.saveTasks(this.data);
   }
 
   public async createProject(
@@ -143,8 +70,10 @@ export class TaskManager {
     tasks: { title: string; description: string; toolRecommendations?: string; ruleRecommendations?: string }[],
     projectPlan?: string,
     autoApprove?: boolean
-  ) {
+  ): Promise<StandardResponse<ProjectCreationSuccessData>> {
     await this.ensureInitialized();
+    // Reload before creating to ensure counters are up-to-date
+    await this.reloadFromDisk();
     this.projectCounter += 1;
     const projectId = `proj-${this.projectCounter}`;
 
@@ -163,18 +92,20 @@ export class TaskManager {
       });
     }
 
-    this.data.projects.push({
+    const newProject: Project = {
       projectId,
       initialPrompt,
       projectPlan: projectPlan || initialPrompt,
       tasks: newTasks,
       completed: false,
       autoApprove: autoApprove === true ? true : false,
-    });
+    };
+
+    this.data.projects.push(newProject);
 
     await this.saveTasks();
 
-    const progressTable = this.formatTaskProgressTable(projectId);
+    const progressTable = formatTaskProgressTable(newProject);
 
     return createSuccessResponse({
       projectId,
@@ -184,12 +115,146 @@ export class TaskManager {
         title: t.title,
         description: t.description,
       })),
-      message: `Tasks have been successfully added. Please use the task tool with 'read' action to retrieve tasks.\n${progressTable}`,
+      message: `Project ${projectId} created with ${newTasks.length} tasks.\n${progressTable}`,
     });
+  }
+
+  public async generateProjectPlan({
+    prompt,
+    provider,
+    model,
+    attachments,
+  }: {
+    prompt: string;
+    provider: string;
+    model: string;
+    attachments: string[];
+  }): Promise<StandardResponse<ProjectCreationSuccessData>> {
+    await this.ensureInitialized();
+
+    // Wrap prompt and attachments in XML tags
+    let llmPrompt = `<prompt>${prompt}</prompt>`;
+    for (const att of attachments) {
+      llmPrompt += `\n<attachment>${att}</attachment>`;
+    }
+
+    // Import and configure the appropriate provider
+    let modelProvider;
+    switch (provider) {
+      case "openai":
+        const { openai } = await import("@ai-sdk/openai");
+        modelProvider = openai(model);
+        break;
+      case "google":
+        const { google } = await import("@ai-sdk/google");
+        modelProvider = google(model);
+        break;
+      case "deepseek":
+        const { deepseek } = await import("@ai-sdk/deepseek");
+        modelProvider = deepseek(model);
+        break;
+      default:
+        throw createError(
+          ErrorCode.InvalidArgument,
+          `Invalid provider: ${provider}`
+        );
+    }
+
+    // Define the schema for the LLM's response using jsonSchema helper
+    const projectPlanSchema = jsonSchema<ProjectPlanOutput>({
+      type: "object",
+      properties: {
+        projectPlan: { type: "string" },
+        tasks: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              title: { type: "string" },
+              description: { type: "string" },
+              toolRecommendations: { type: "string" },
+              ruleRecommendations: { type: "string" },
+            },
+            required: ["title", "description"],
+          },
+        },
+      },
+      required: ["projectPlan", "tasks"],
+    });
+
+    interface ProjectPlanOutput {
+      projectPlan: string;
+      tasks: Array<{
+        title: string;
+        description: string;
+        toolRecommendations?: string;
+        ruleRecommendations?: string;
+      }>;
+    }
+
+    try {
+      // Call the LLM to generate the project plan
+      const { object } = await generateObject<ProjectPlanOutput>({
+        model: modelProvider,
+        schema: projectPlanSchema,
+        prompt: llmPrompt,
+      });
+
+      // Create a new project with the generated plan and tasks
+      const result = await this.createProject(
+        prompt,
+        object.tasks,
+        object.projectPlan
+      );
+
+      return result;
+    } catch (err) {
+      // Handle specific AI SDK errors
+      if (err instanceof Error) {
+        if (err.name === 'NoObjectGeneratedError') {
+          throw createError(
+            ErrorCode.InvalidResponseFormat,
+            "The LLM failed to generate a valid project plan. Please try again with a clearer prompt.",
+            { originalError: err }
+          );
+        }
+        if (err.name === 'InvalidJSONError') {
+          throw createError(
+            ErrorCode.InvalidResponseFormat,
+            "The LLM generated invalid JSON. Please try again.",
+            { originalError: err }
+          );
+        }
+        if (err.message.includes('rate limit') || err.message.includes('quota')) {
+          throw createError(
+            ErrorCode.ConfigurationError,
+            "Rate limit or quota exceeded for the LLM provider. Please try again later.",
+            { originalError: err }
+          );
+        }
+        if (err.message.includes('authentication') || err.message.includes('unauthorized')) {
+          throw createError(
+            ErrorCode.ConfigurationError,
+            "Invalid API key or authentication failed. Please check your environment variables.",
+            { originalError: err }
+          );
+        }
+      }
+
+      // For unknown errors, preserve the original error but wrap it
+      throw createError(
+        ErrorCode.InvalidResponseFormat,
+        "Failed to generate project plan",
+        { originalError: err }
+      );
+    }
   }
 
   public async getNextTask(projectId: string): Promise<StandardResponse> {
     await this.ensureInitialized();
+    // Reload from disk to ensure we have the latest data
+    await this.reloadFromDisk();
+    
     const proj = this.data.projects.find((p) => p.projectId === projectId);
     if (!proj) {
       throw createError(
@@ -208,7 +273,7 @@ export class TaskManager {
       // all tasks done?
       const allDone = proj.tasks.every((t) => t.status === "done");
       if (allDone && !proj.completed) {
-        const progressTable = this.formatTaskProgressTable(projectId);
+        const progressTable = formatTaskProgressTable(proj);
         return {
           status: "all_tasks_done",
           data: {
@@ -222,7 +287,7 @@ export class TaskManager {
       );
     }
 
-    const progressTable = this.formatTaskProgressTable(projectId);
+    const progressTable = formatTaskProgressTable(proj);
     return {
       status: "next_task",
       data: {
@@ -234,8 +299,10 @@ export class TaskManager {
     };
   }
 
-  public async approveTaskCompletion(projectId: string, taskId: string) {
+  public async approveTaskCompletion(projectId: string, taskId: string): Promise<StandardResponse<ApproveTaskSuccessData>> {
     await this.ensureInitialized();
+    // Reload before modifying
+    await this.reloadFromDisk();
     const proj = this.data.projects.find((p) => p.projectId === projectId);
     if (!proj) {
       throw createError(
@@ -257,7 +324,18 @@ export class TaskManager {
       );
     }
     if (task.approved) {
-      return createSuccessResponse({ message: "Task already approved." });
+      // Return the full expected data structure even if already approved
+      return createSuccessResponse({
+        message: "Task already approved.",
+        projectId: proj.projectId,
+        task: {
+          id: task.id,
+          title: task.title,
+          description: task.description,
+          completedDetails: task.completedDetails,
+          approved: task.approved,
+        },
+      });
     }
 
     task.approved = true;
@@ -274,8 +352,10 @@ export class TaskManager {
     });
   }
 
-  public async approveProjectCompletion(projectId: string) {
+  public async approveProjectCompletion(projectId: string): Promise<StandardResponse<ApproveProjectSuccessData>> {
     await this.ensureInitialized();
+    // Reload before modifying
+    await this.reloadFromDisk();
     const proj = this.data.projects.find((p) => p.projectId === projectId);
     if (!proj) {
       throw createError(
@@ -316,8 +396,11 @@ export class TaskManager {
     });
   }
 
-  public async openTaskDetails(taskId: string) {
+  public async openTaskDetails(taskId: string): Promise<StandardResponse<OpenTaskSuccessData>> {
     await this.ensureInitialized();
+    // Reload from disk to ensure we have the latest data
+    await this.reloadFromDisk();
+    
     for (const proj of this.data.projects) {
       const target = proj.tasks.find((t) => t.id === taskId);
       if (target) {
@@ -343,8 +426,10 @@ export class TaskManager {
     );
   }
 
-  public async listProjects(state?: TaskState) {
+  public async listProjects(state?: TaskState): Promise<StandardResponse<ListProjectsSuccessData>> {
     await this.ensureInitialized();
+    // Reload from disk to ensure we have the latest data
+    await this.reloadFromDisk();
 
     let filteredProjects = [...this.data.projects];
 
@@ -363,7 +448,7 @@ export class TaskManager {
       });
     }
 
-    const projectsList = this.formatProjectsList();
+    const projectsList = formatProjectsList(filteredProjects);
     return createSuccessResponse({
       message: `Current projects in the system:\n${projectsList}`,
       projects: filteredProjects.map((proj) => ({
@@ -376,8 +461,10 @@ export class TaskManager {
     });
   }
 
-  public async listTasks(projectId?: string, state?: TaskState) {
+  public async listTasks(projectId?: string, state?: TaskState): Promise<StandardResponse<ListTasksSuccessData>> {
     await this.ensureInitialized();
+    // Reload from disk to ensure we have the latest data
+    await this.reloadFromDisk();
     
     // If projectId is provided, verify the project exists
     if (projectId) {
@@ -429,8 +516,10 @@ export class TaskManager {
   public async addTasksToProject(
     projectId: string,
     tasks: { title: string; description: string; toolRecommendations?: string; ruleRecommendations?: string }[]
-  ) {
+  ): Promise<StandardResponse<AddTasksSuccessData>> {
     await this.ensureInitialized();
+    // Reload before modifying
+    await this.reloadFromDisk();
     const proj = this.data.projects.find((p) => p.projectId === projectId);
     if (!proj) {
       throw createError(
@@ -457,9 +546,9 @@ export class TaskManager {
     proj.tasks.push(...newTasks);
     await this.saveTasks();
 
-    const progressTable = this.formatTaskProgressTable(projectId);
+    const progressTable = formatTaskProgressTable(proj);
     return createSuccessResponse({
-      message: `Added ${newTasks.length} new tasks to project.\n${progressTable}`,
+      message: `Added ${newTasks.length} new tasks to project ${projectId}.\n${progressTable}`,
       newTasks: newTasks.map((t) => ({
         id: t.id,
         title: t.title,
@@ -479,8 +568,10 @@ export class TaskManager {
       status?: "not started" | "in progress" | "done";
       completedDetails?: string;
     }
-  ) {
+  ): Promise<StandardResponse<Task>> {
     await this.ensureInitialized();
+    // Reload before modifying
+    await this.reloadFromDisk();
     const project = this.data.projects.find((p) => p.projectId === projectId);
     if (!project) {
       throw createError(
@@ -509,8 +600,10 @@ export class TaskManager {
     return createSuccessResponse(project.tasks[taskIndex]);
   }
 
-  public async deleteTask(projectId: string, taskId: string) {
+  public async deleteTask(projectId: string, taskId: string): Promise<StandardResponse<DeleteTaskSuccessData>> {
     await this.ensureInitialized();
+    // Reload before modifying
+    await this.reloadFromDisk();
     const proj = this.data.projects.find((p) => p.projectId === projectId);
     if (!proj) {
       throw createError(
@@ -536,20 +629,17 @@ export class TaskManager {
     proj.tasks.splice(taskIndex, 1);
     await this.saveTasks();
 
-    const progressTable = this.formatTaskProgressTable(projectId);
+    const progressTable = formatTaskProgressTable(proj);
     return createSuccessResponse({
-      message: `Task ${taskId} has been deleted.\n${progressTable}`,
+      message: `Task ${taskId} has been deleted from project ${projectId}.\n${progressTable}`,
     });
   }
 
-  public async readProject(projectId: string): Promise<StandardResponse<{
-    projectId: string;
-    initialPrompt: string;
-    projectPlan: string;
-    completed: boolean;
-    tasks: Task[];
-  }>> {
+  public async readProject(projectId: string): Promise<StandardResponse<ReadProjectSuccessData>> {
     await this.ensureInitialized();
+    // Reload from disk to ensure we have the latest data
+    await this.reloadFromDisk();
+    
     const project = this.data.projects.find(p => p.projectId === projectId);
     if (!project) {
       throw createError(

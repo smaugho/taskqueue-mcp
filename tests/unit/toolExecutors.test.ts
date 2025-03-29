@@ -3,6 +3,7 @@ import { TaskManager } from '../../src/server/TaskManager.js';
 import { toolExecutorMap } from '../../src/server/toolExecutors.js';
 import { ErrorCode } from '../../src/types/index.js';
 import { Task } from '../../src/types/index.js';
+import { ApproveTaskSuccessData } from '../../src/types/index.js';
 
 // Mock TaskManager
 jest.mock('../../src/server/TaskManager.js');
@@ -595,9 +596,20 @@ describe('Tool Executors', () => {
   describe('approveTask Tool Executor', () => {
     it('should approve task successfully', async () => {
       const executor = toolExecutorMap.get('approve_task')!;
+      // Mock data matching ApproveTaskSuccessData interface
+      const mockSuccessData: ApproveTaskSuccessData = {
+        projectId: 'proj-1',
+        task: {
+          id: 'task-1',
+          title: 'Test Task',
+          description: 'Test Description',
+          completedDetails: 'Completed successfully',
+          approved: true
+        }
+      };
       taskManager.approveTaskCompletion.mockResolvedValue({
         status: 'success',
-        data: { message: 'Task approved successfully' }
+        data: mockSuccessData
       });
       
       await executor.execute(taskManager, {

@@ -187,6 +187,42 @@ const finalizeProjectTool: Tool = {
   },
 };
 
+/**
+ * Generate Project Plan Tool
+ * @param {object} args - A JSON object containing the arguments
+ * @see {generateProjectPlanToolExecutor}
+ */
+const generateProjectPlanTool: Tool = {
+  name: "generate_project_plan",
+  description: "Use an LLM to generate a project plan and tasks from a prompt. The LLM will analyze the prompt and any attached files to create a structured project plan.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      prompt: {
+        type: "string",
+        description: "The prompt text or file path to use for generating the project plan.",
+      },
+      provider: {
+        type: "string",
+        enum: ["openai", "google", "deepseek"],
+        description: "The LLM provider to use (requires corresponding API key to be set).",
+      },
+      model: {
+        type: "string",
+        description: "The specific model to use (e.g., 'gpt-4-turbo' for OpenAI).",
+      },
+      attachments: {
+        type: "array",
+        items: {
+          type: "string",
+        },
+        description: "Optional array of file contents or text to provide as context.",
+      },
+    },
+    required: ["prompt", "provider", "model"],
+  },
+};
+
 // ---------------------- TASK TOOLS ----------------------
 
 /**
@@ -395,6 +431,7 @@ export const ALL_TOOLS: Tool[] = [
   deleteProjectTool,
   addTasksToProjectTool,
   finalizeProjectTool,
+  generateProjectPlanTool,
 
   listTasksTool,
   readTaskTool,

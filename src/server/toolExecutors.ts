@@ -69,7 +69,7 @@ function validateTaskList(tasks: unknown): void {
 }
 
 /**
- * Validates an optional “state” parameter against the allowed states.
+ * Validates an optional "state" parameter against the allowed states.
  */
 function validateOptionalStateParam(
   state: unknown,
@@ -167,6 +167,67 @@ const createProjectToolExecutor: ToolExecutor = {
   },
 };
 toolExecutorMap.set(createProjectToolExecutor.name, createProjectToolExecutor);
+
+/**
+ * Tool executor for generating project plans using an LLM
+ */
+const generateProjectPlanToolExecutor: ToolExecutor = {
+  name: "generate_project_plan",
+  async execute(taskManager, args) {
+    // Validate required parameters
+    const prompt = validateRequiredStringParam(args.prompt, "prompt");
+    const provider = validateRequiredStringParam(args.provider, "provider");
+    const model = validateRequiredStringParam(args.model, "model");
+
+    // Validate provider is one of the allowed values
+    if (!["openai", "google", "deepseek"].includes(provider)) {
+      throw createError(
+        ErrorCode.InvalidArgument,
+        `Invalid provider: ${provider}. Must be one of: openai, google, deepseek`
+      );
+    }
+
+    // Check that the corresponding API key is set
+    const envKey = `${provider.toUpperCase()}_API_KEY`;
+    if (!process.env[envKey]) {
+      throw createError(
+        ErrorCode.ConfigurationError,
+        `Missing ${envKey} environment variable required for ${provider}`
+      );
+    }
+
+    // Validate optional attachments
+    let attachments: string[] = [];
+    if (args.attachments !== undefined) {
+      if (!Array.isArray(args.attachments)) {
+        throw createError(
+          ErrorCode.InvalidArgument,
+          "Invalid attachments: must be an array of strings"
+        );
+      }
+      attachments = args.attachments.map((att, index) => {
+        if (typeof att !== "string") {
+          throw createError(
+            ErrorCode.InvalidArgument,
+            `Invalid attachment at index ${index}: must be a string`
+          );
+        }
+        return att;
+      });
+    }
+
+    // Call the TaskManager method to generate the plan
+    const result = await taskManager.generateProjectPlan({
+      prompt,
+      provider,
+      model,
+      attachments,
+    });
+
+    return formatToolResponse(result);
+  },
+};
+toolExecutorMap.set(generateProjectPlanToolExecutor.name, generateProjectPlanToolExecutor);
 
 /**
  * Tool executor for getting the next task in a project

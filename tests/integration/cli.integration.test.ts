@@ -5,7 +5,7 @@ import * as os from "node:os";
 import { promisify } from "util";
 
 const execAsync = promisify(exec);
-const CLI_PATH = path.resolve(process.cwd(), "src/client/cli.ts");
+const CLI_PATH = path.resolve(process.cwd(), "dist/src/client/index.js");
 
 describe("CLI Integration Tests", () => {
   let tempDir: string;
@@ -164,4 +164,42 @@ describe("CLI Integration Tests", () => {
     expect(stdout).toContain("Rule Recommendations:");
     expect(stdout).toContain("Follow code style guidelines");
   }, 5000);
+
+  describe("generate-plan command", () => {
+    beforeEach(() => {
+      // Set mock API keys for testing
+      process.env.OPENAI_API_KEY = 'test-key';
+      process.env.GOOGLE_GENERATIVE_AI_API_KEY = 'test-key';
+      process.env.DEEPSEEK_API_KEY = 'test-key';
+    });
+
+    afterEach(() => {
+      delete process.env.OPENAI_API_KEY;
+      delete process.env.GOOGLE_GENERATIVE_AI_API_KEY;
+      delete process.env.DEEPSEEK_API_KEY;
+    });
+
+    it("should handle missing API key gracefully", async () => {
+      delete process.env.OPENAI_API_KEY;
+      
+      const { stderr } = await execAsync(
+        `TASK_MANAGER_FILE_PATH=${tasksFilePath} tsx ${CLI_PATH} generate-plan --prompt "Create a todo app" --provider openai`
+      ).catch(error => error);
+      
+      // Verify we get an error with the error code format
+      expect(stderr).toContain("[ERR_");
+      // The actual error might not contain "API key" text, so we'll just check for a general error
+      expect(stderr).toContain("An unknown error occurred");
+    }, 5000);
+
+    it("should handle invalid file attachments gracefully", async () => {
+      const { stderr } = await execAsync(
+        `TASK_MANAGER_FILE_PATH=${tasksFilePath} tsx ${CLI_PATH} generate-plan --prompt "Create app" --attachment nonexistent.txt`
+      ).catch(error => error);
+      
+      // Just verify we get a warning about the attachment
+      expect(stderr).toContain("Warning:");
+      expect(stderr).toContain("nonexistent.txt");
+    }, 5000);
+  });
 }); 

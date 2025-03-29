@@ -47,6 +47,7 @@ export enum ErrorCode {
   MissingParameter = 'ERR_1000',
   InvalidState = 'ERR_1001',
   InvalidArgument = 'ERR_1002',
+  ConfigurationError = 'ERR_1003',
 
   // Resource Not Found Errors (2000-2999)
   ProjectNotFound = 'ERR_2000',
@@ -81,6 +82,75 @@ export interface StandardError {
   message: string;
   details?: unknown;
 }
+
+// Define the structure for createProject success data
+export interface ProjectCreationSuccessData {
+  projectId: string;
+  totalTasks: number;
+  tasks: Array<{ id: string; title: string; description: string }>;
+  message: string;
+}
+
+// --- NEW Success Data Interfaces ---
+
+export interface ApproveTaskSuccessData {
+  projectId: string;
+  task: {
+    id: string;
+    title: string;
+    description: string;
+    completedDetails: string;
+    approved: boolean;
+  };
+}
+
+export interface ApproveProjectSuccessData {
+  projectId: string;
+  message: string;
+}
+
+export interface OpenTaskSuccessData {
+  projectId: string;
+  initialPrompt: string;
+  projectPlan: string;
+  completed: boolean;
+  task: Task; // Use the full Task type
+}
+
+export interface ListProjectsSuccessData {
+  message: string;
+  projects: Array<{
+    projectId: string;
+    initialPrompt: string;
+    totalTasks: number;
+    completedTasks: number;
+    approvedTasks: number;
+  }>;
+}
+
+export interface ListTasksSuccessData {
+  message: string;
+  tasks: Task[]; // Use the full Task type
+}
+
+export interface AddTasksSuccessData {
+  message: string;
+  newTasks: Array<{ id: string; title: string; description: string }>;
+}
+
+export interface DeleteTaskSuccessData {
+  message: string;
+}
+
+export interface ReadProjectSuccessData {
+  projectId: string;
+  initialPrompt: string;
+  projectPlan: string;
+  completed: boolean;
+  tasks: Task[]; // Use the full Task type
+}
+
+// --- End NEW Success Data Interfaces ---
 
 // Generic success response
 export interface SuccessResponse<T = unknown> {

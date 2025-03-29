@@ -6,7 +6,6 @@ node_modules
 .vscode
 .env
 .env.local
-.cursor
 artifacts
 repomix-output.txt
 
