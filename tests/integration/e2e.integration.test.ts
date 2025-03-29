@@ -5,6 +5,10 @@ import * as path from 'node:path';
 import * as os from 'node:os';
 import * as fs from 'node:fs/promises';
 import process from 'node:process';
+import dotenv from 'dotenv';
+
+// Load environment variables from .env file
+dotenv.config();
 
 interface ToolResponse {
   isError: boolean;
@@ -284,5 +288,61 @@ describe('MCP Client Integration', () => {
     }) as ToolResponse;
     expect(finalizeResult.isError).toBeFalsy();
     console.log('Project was successfully finalized after explicit task approval');
+  });
+
+  // Skip by default as it requires OpenAI API key
+  it.skip('should generate a project plan using OpenAI', async () => {
+    console.log('Testing project plan generation...');
+    
+    // Skip if no OpenAI API key is set
+    const openaiApiKey = process.env.OPENAI_API_KEY;
+    if (!openaiApiKey) {
+      console.log('Skipping test: OPENAI_API_KEY not set');
+      return;
+    }
+
+    // Create a temporary requirements file
+    const requirementsPath = path.join(tempDir, 'requirements.md');
+    const requirements = `# TODO App Requirements
+
+- Use React for the frontend
+- Include add, delete, and mark complete functionality
+- Store todos in local storage
+- Add basic styling`;
+
+    await fs.writeFile(requirementsPath, requirements, 'utf-8');
+    console.log('Created temporary requirements file:', requirementsPath);
+
+    // Test prompt and context
+    const testPrompt = "Create a step-by-step project plan to build a simple TODO app with React";
+
+    // Generate project plan
+    const generateResult = await client.callTool({
+      name: "generate_project_plan",
+      arguments: {
+        prompt: testPrompt,
+        provider: "openai",
+        model: "gpt-4-turbo",
+        attachments: [requirementsPath]
+      }
+    }) as ToolResponse;
+
+    expect(generateResult.isError).toBeFalsy();
+    const planData = JSON.parse((generateResult.content[0] as { text: string }).text);
+    
+    // Verify the generated plan structure
+    expect(planData).toHaveProperty('data');
+    expect(planData.data).toHaveProperty('projectPlan');
+    expect(planData.data).toHaveProperty('tasks');
+    expect(Array.isArray(planData.data.tasks)).toBe(true);
+    expect(planData.data.tasks.length).toBeGreaterThan(0);
+
+    // Verify task structure
+    const firstTask = planData.data.tasks[0];
+    expect(firstTask).toHaveProperty('title');
+    expect(firstTask).toHaveProperty('description');
+    
+    // The temporary file will be cleaned up by the afterAll hook that removes tempDir
+    console.log('Successfully generated project plan with tasks');
   });
 });

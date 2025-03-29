@@ -132,10 +132,22 @@ export class TaskManager {
   }): Promise<StandardResponse<ProjectCreationSuccessData>> {
     await this.ensureInitialized();
 
+    // Read all attachment files
+    const attachmentContents: string[] = [];
+    for (const filename of attachments) {
+      try {
+        const content = await this.fileSystemService.readAttachmentFile(filename);
+        attachmentContents.push(content);
+      } catch (error) {
+        // Propagate file read errors
+        throw error;
+      }
+    }
+
     // Wrap prompt and attachments in XML tags
     let llmPrompt = `<prompt>${prompt}</prompt>`;
-    for (const att of attachments) {
-      llmPrompt += `\n<attachment>${att}</attachment>`;
+    for (const content of attachmentContents) {
+      llmPrompt += `\n<attachment>${content}</attachment>`;
     }
 
     // Import and configure the appropriate provider

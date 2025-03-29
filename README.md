@@ -30,7 +30,7 @@ Usually you will set the tool configuration in Claude Desktop, Cursor, or anothe
 To use the CLI utility, you can use the following command:
 
 ```bash
-npx task-manager-cli --help
+npx taskqueue --help
 ```
 
 This will show the available commands and options.
@@ -134,7 +134,7 @@ A typical workflow for an LLM using this task manager would be:
 Task approval is controlled exclusively by the human user through the CLI command:
 
 ```bash
-npx task-manager-cli approve-task -- <projectId> <taskId>
+npx taskqueue approve-task -- <projectId> <taskId>
 ```
 
 Options:
@@ -147,13 +147,13 @@ Note: Tasks must be marked as "done" with completed details before they can be a
 The CLI provides a command to list all projects and tasks:
 
 ```bash
-npx task-manager-cli list-tasks
+npx taskqueue list-tasks
 ```
 
 To view details of a specific project:
 
 ```bash
-npx task-manager-cli list-tasks -- -p <projectId>
+npx taskqueue list-tasks -- -p <projectId>
 ```
 
 This command displays information about all projects in the system or a specific project, including:

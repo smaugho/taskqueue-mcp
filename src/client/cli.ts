@@ -14,7 +14,7 @@ import fs from "fs/promises";
 const program = new Command();
 
 program
-  .name("task-manager-cli")
+  .name("taskqueue")
   .description("CLI for the Task Manager MCP Server")
   .version("1.2.0")
   .option(
@@ -151,7 +151,7 @@ program
 
       if (completedTasks === totalTasks && approvedTasks === totalTasks) {
         console.log(chalk.green('\n🎉 All tasks are completed and approved!'));
-        console.log(chalk.blue(`The project can now be finalized using: task-manager-cli finalize ${projectId}`));
+        console.log(chalk.blue(`The project can now be finalized using: taskqueue finalize ${projectId}`));
       } else {
         if (totalTasks - completedTasks > 0) {
           console.log(chalk.yellow(`\n${totalTasks - completedTasks} tasks remaining to be completed.`));
@@ -281,7 +281,7 @@ program
 
       console.log(chalk.green('\n🎉 Project successfully completed and approved!'));
       console.log(chalk.gray('You can view the project details anytime using:'));
-      console.log(chalk.blue(`  task-manager-cli list -p ${projectId}`));
+      console.log(chalk.blue(`  taskqueue list -p ${projectId}`));
 
     } catch (error) {
       const normalized = normalizeError(error);
@@ -490,27 +490,12 @@ program
     try {
       console.log(chalk.blue(`Generating project plan from prompt...`));
 
-      // Read attachment files if provided
-      const attachments: string[] = [];
-      for (const file of options.attachment) {
-        try {
-          const content = await fs.readFile(file, 'utf-8');
-          attachments.push(content);
-        } catch (error: unknown) {
-          if (error instanceof Error) {
-            console.error(chalk.yellow(`Warning: Could not read attachment file ${chalk.bold(file)}: ${error.message}`));
-          } else {
-            console.error(chalk.yellow(`Warning: Could not read attachment file ${chalk.bold(file)}: Unknown error`));
-          }
-        }
-      }
-
-      // Call the generateProjectPlan method
+      // Pass attachment filenames directly to the server
       const response = await taskManager.generateProjectPlan({
         prompt: options.prompt,
         provider: options.provider,
         model: options.model,
-        attachments,
+        attachments: options.attachment  // Pass the filenames directly
       });
 
       if ('error' in response) {

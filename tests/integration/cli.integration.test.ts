@@ -12,7 +12,7 @@ describe("CLI Integration Tests", () => {
   let tasksFilePath: string;
 
   beforeEach(async () => {
-    tempDir = path.join(os.tmpdir(), `task-manager-cli-test-${Date.now()}`);
+    tempDir = path.join(os.tmpdir(), `taskqueue-test-${Date.now()}`);
     await fs.mkdir(tempDir, { recursive: true });
     tasksFilePath = path.join(tempDir, "test-tasks.json");
     process.env.TASK_MANAGER_FILE_PATH = tasksFilePath;
@@ -196,7 +196,7 @@ describe("CLI Integration Tests", () => {
       const { stderr } = await execAsync(
         `TASK_MANAGER_FILE_PATH=${tasksFilePath} tsx ${CLI_PATH} generate-plan --prompt "Create app" --attachment nonexistent.txt`
       ).catch(error => error);
-      
+
       // Just verify we get a warning about the attachment
       expect(stderr).toContain("Warning:");
       expect(stderr).toContain("nonexistent.txt");
