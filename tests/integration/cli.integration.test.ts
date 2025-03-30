@@ -181,25 +181,29 @@ describe("CLI Integration Tests", () => {
 
     it("should handle missing API key gracefully", async () => {
       delete process.env.OPENAI_API_KEY;
-      
+
       const { stderr } = await execAsync(
         `TASK_MANAGER_FILE_PATH=${tasksFilePath} tsx ${CLI_PATH} generate-plan --prompt "Create a todo app" --provider openai`
       ).catch(error => error);
-      
+
       // Verify we get an error with the error code format
       expect(stderr).toContain("[ERR_");
-      // The actual error might not contain "API key" text, so we'll just check for a general error
-      expect(stderr).toContain("An unknown error occurred");
+      // The actual error should contain "API key" text
+      expect(stderr).toContain("API key");
     }, 5000);
 
     it("should handle invalid file attachments gracefully", async () => {
-      const { stderr } = await execAsync(
+      const { stdout, stderr } = await execAsync(
         `TASK_MANAGER_FILE_PATH=${tasksFilePath} tsx ${CLI_PATH} generate-plan --prompt "Create app" --attachment nonexistent.txt`
-      ).catch(error => error);
+      ).catch(error => ({ stdout: error.stdout, stderr: error.stderr }));
 
-      // Just verify we get a warning about the attachment
-      expect(stderr).toContain("Warning:");
-      expect(stderr).toContain("nonexistent.txt");
+      // Keep these console logs temporarily if helpful for debugging during development
+      // console.log("Test stdout:", stdout); 
+      // console.log("Test stderr:", stderr);
+
+      // Updated assertion to match the formatCliError output
+      expect(stderr).toContain("[ERR_4000] Failed to read attachment file: nonexistent.txt");
+      expect(stderr).toContain("-> Details: Attachment file not found: nonexistent.txt");
     }, 5000);
   });
 }); 

@@ -45,28 +45,48 @@ function getCategoryFromCode(code: ErrorCode): ErrorCategory {
  * Converts any error to a StandardError
  */
 export function normalizeError(error: unknown): StandardError {
+  // 1. Check if it already looks like a StandardError (duck typing)
+  if (
+    typeof error === 'object' &&
+    error !== null &&
+    'status' in error && error.status === 'error' &&
+    'code' in error && typeof error.code === 'string' &&
+    'category' in error && typeof error.category === 'string' &&
+    'message' in error && typeof error.message === 'string' &&
+    Object.values(ErrorCode).includes(error.code as ErrorCode) // Verify the code is valid
+  ) {
+    // It already conforms to the StandardError structure, return as is.
+    // We cast because TypeScript knows it's 'object', but we've verified the shape.
+    return error as StandardError;
+  }
+
+  // 2. Check if it's an instance of Error
   if (error instanceof Error) {
-    // Try to parse error code from message if it exists
-    const codeMatch = error.message.match(/\[([A-Z_]+)\]/);
-    if (codeMatch && Object.values(ErrorCode).includes(codeMatch[1] as ErrorCode)) {
+    const codeMatch = error.message.match(/\[([A-Z_0-9]+)\]/);
+    // Ensure codeMatch exists and the captured group is a valid ErrorCode
+    if (codeMatch && codeMatch[1] && Object.values(ErrorCode).includes(codeMatch[1] as ErrorCode)) {
+      const extractedCode = codeMatch[1] as ErrorCode;
+      // Remove the code prefix "[CODE]" from the message - use the full match codeMatch[0] for replacement
+      const cleanedMessage = error.message.replace(codeMatch[0], '').trim();
       return createError(
-        codeMatch[1] as ErrorCode,
-        error.message.replace(`[${codeMatch[1]}]`, '').trim(),
-        { stack: error.stack }
+        extractedCode,
+        cleanedMessage,
+        { stack: error.stack } // Keep stack trace if available
       );
     }
     
-    // Default to unknown error
+    // Fallback for generic Errors without a recognized code in the message
     return createError(
-      ErrorCode.InvalidArgument,
+      ErrorCode.InvalidArgument, // Use InvalidArgument for generic errors
       error.message,
       { stack: error.stack }
     );
   }
   
+  // 3. Handle other types (string, primitive, plain object without structure)
   return createError(
     ErrorCode.Unknown,
     typeof error === 'string' ? error : 'An unknown error occurred',
-    { originalError: error }
+    { originalError: error } // Include the original unknown error type
   );
 } 

@@ -9,14 +9,13 @@ import {
 import { TaskManager } from "../server/TaskManager.js";
 import { createError, normalizeError } from "../utils/errors.js";
 import { formatCliError } from "./errors.js";
-import fs from "fs/promises";
 
 const program = new Command();
 
 program
   .name("taskqueue")
   .description("CLI for the Task Manager MCP Server")
-  .version("1.2.0")
+  .version("1.3.0")
   .option(
     '-f, --file-path <path>',
     'Specify the path to the tasks JSON file. Overrides TASK_MANAGER_FILE_PATH env var.'
@@ -486,16 +485,17 @@ program
   .option("--model <model>", "LLM model to use", "gpt-4-turbo")
   .option("--provider <provider>", "LLM provider to use (openai, google, or deepseek)", "openai")
   .option("--attachment <file>", "File to attach as context (can be specified multiple times)", collect, [])
-  .action(async (options) => {
+  .action(async (options) => {    
     try {
       console.log(chalk.blue(`Generating project plan from prompt...`));
+      console.log(options.attachment);
 
       // Pass attachment filenames directly to the server
       const response = await taskManager.generateProjectPlan({
         prompt: options.prompt,
         provider: options.provider,
         model: options.model,
-        attachments: options.attachment  // Pass the filenames directly
+        attachments: options.attachment
       });
 
       if ('error' in response) {
@@ -537,17 +537,8 @@ program
         console.log(`\n${data.message}`);
       }
     } catch (err: unknown) {
-      if (err instanceof Error) {
-        // Check for API key related errors and format them appropriately
-        if (err.message.includes('API key') || err.message.includes('authentication') || err.message.includes('unauthorized')) {
-          console.error(chalk.red(`Error: ${err.message}`));
-        } else {
-          console.error(chalk.yellow(`Warning: ${err.message}`));
-        }
-      } else {
         const normalized = normalizeError(err);
-        console.error(chalk.red(formatCliError(normalized)));
-      }
+        console.error(`Error: ${chalk.red(formatCliError(normalized))}`);
       process.exit(1);
     }
   });

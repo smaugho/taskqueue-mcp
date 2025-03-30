@@ -136,11 +136,16 @@ export class TaskManager {
     const attachmentContents: string[] = [];
     for (const filename of attachments) {
       try {
+        console.log("We are about to try to read the file.")
         const content = await this.fileSystemService.readAttachmentFile(filename);
         attachmentContents.push(content);
       } catch (error) {
         // Propagate file read errors
-        throw error;
+        throw createError(
+          ErrorCode.FileReadError,
+          `Failed to read attachment file: ${filename}`,
+          { originalError: error }
+        );
       }
     }
 
@@ -171,6 +176,7 @@ export class TaskManager {
           `Invalid provider: ${provider}`
         );
     }
+    console.log("set model and provider")
 
     // Define the schema for the LLM's response using jsonSchema helper
     const projectPlanSchema = jsonSchema<ProjectPlanOutput>({
@@ -223,6 +229,7 @@ export class TaskManager {
     } catch (err) {
       // Handle specific AI SDK errors
       if (err instanceof Error) {
+        // Check for specific error names or messages
         if (err.name === 'NoObjectGeneratedError') {
           throw createError(
             ErrorCode.InvalidResponseFormat,
@@ -244,20 +251,33 @@ export class TaskManager {
             { originalError: err }
           );
         }
+        // --- Updated Check for API Key Errors ---
+        // Check by name (more robust) or message content
+        if (err.name === 'LoadAPIKeyError' || err.message.includes('API key is missing')) {
+           throw createError(
+            ErrorCode.ConfigurationError, // Use the correct code for config issues
+            "Invalid or missing API key. Please check your environment variables.", // More specific message
+            { originalError: err }
+          );
+        }
+        // Existing check for general auth errors (might still be relevant for other cases)
         if (err.message.includes('authentication') || err.message.includes('unauthorized')) {
           throw createError(
             ErrorCode.ConfigurationError,
-            "Invalid API key or authentication failed. Please check your environment variables.",
+            "Authentication failed with the LLM provider. Please check your credentials.",
             { originalError: err }
           );
         }
       }
 
-      // For unknown errors, preserve the original error but wrap it
+      // For unknown errors from the LLM/SDK, preserve the original error but wrap it.
+      // Use a more generic error code here if it's not one of the above.
+      // Perhaps keep InvalidResponseFormat or create a new one like LLMInteractionError?
+      // Let's stick with InvalidResponseFormat for now as it often manifests as bad output.
       throw createError(
-        ErrorCode.InvalidResponseFormat,
-        "Failed to generate project plan",
-        { originalError: err }
+        ErrorCode.InvalidResponseFormat, // Fallback code
+        "Failed to generate project plan due to an unexpected error.", // Fallback message
+        { originalError: err } // Always include original error for debugging
       );
     }
   }

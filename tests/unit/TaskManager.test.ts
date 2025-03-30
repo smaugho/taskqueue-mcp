@@ -35,6 +35,7 @@ const mockSaveTasks = jest.fn() as jest.MockedFunction<FileSystemServiceType['sa
 const mockCalculateMaxIds = jest.fn() as jest.MockedFunction<FileSystemServiceType['calculateMaxIds']>;
 const mockLoadTasks = jest.fn() as jest.MockedFunction<FileSystemServiceType['loadTasks']>;
 const mockReloadTasks = jest.fn() as jest.MockedFunction<FileSystemServiceType['reloadTasks']>;
+const mockReadAttachmentFile = jest.fn() as jest.MockedFunction<FileSystemServiceType['readAttachmentFile']>;
 
 // Create mock functions for FileSystemService static methods
 const mockGetAppDataDir = jest.fn() as jest.MockedFunction<typeof FileSystemServiceType.getAppDataDir>;
@@ -47,6 +48,7 @@ jest.unstable_mockModule('../../src/server/FileSystemService.js', () => {
     calculateMaxIds = mockCalculateMaxIds;
     loadTasks = mockLoadTasks;
     reloadTasks = mockReloadTasks;
+    readAttachmentFile = mockReadAttachmentFile;
     static getAppDataDir = mockGetAppDataDir;
   }
 
@@ -123,6 +125,11 @@ describe('TaskManager', () => {
     // Reload returns the current state (deep copy)
     mockReloadTasks.mockImplementation(async () => {
        return JSON.parse(JSON.stringify(currentMockData));
+    });
+
+    // Mock readAttachmentFile to return the filename as content for testing
+    mockReadAttachmentFile.mockImplementation(async (filename: string) => {
+      return filename;
     });
 
     // CalculateMaxIds uses the helper logic on potentially provided data
@@ -1062,7 +1069,7 @@ describe('TaskManager', () => {
         attachments: []
       })).rejects.toMatchObject({
         code: 'ERR_1003',
-        message: "Invalid API key or authentication failed. Please check your environment variables."
+        message: "Authentication failed with the LLM provider. Please check your credentials."
       });
     });
 
