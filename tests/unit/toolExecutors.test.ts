@@ -238,8 +238,11 @@ describe('Tool Executors', () => {
       };
       
       taskManager.getNextTask.mockResolvedValue({
-        status: 'next_task',
-        data: mockTask
+        status: 'success',
+        data: {
+          message: 'Next task retrieved successfully',
+          task: mockTask
+        }
       });
       
       const result = await executor.execute(taskManager, { projectId: 'proj-1' });

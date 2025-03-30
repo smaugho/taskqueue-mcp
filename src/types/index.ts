@@ -144,7 +144,7 @@ export interface ReadProjectSuccessData {
   initialPrompt: string;
   projectPlan: string;
   completed: boolean;
-  tasks: Task[]; // Use the full Task type
+  tasks: Task[];
 }
 
 // --- End NEW Success Data Interfaces ---
@@ -166,17 +166,6 @@ export interface ErrorResponse {
   };
 }
 
-// Next task response
-export interface NextTaskResponse {
-  status: "next_task";
-  data: {
-    id: string;
-    title: string;
-    description: string;
-    message?: string;
-  };
-}
-
 // All tasks done response
 export interface AllTasksDoneResponse {
   status: "all_tasks_done";
@@ -189,5 +178,4 @@ export interface AllTasksDoneResponse {
 export type StandardResponse<T = unknown> = 
   | SuccessResponse<T>
   | ErrorResponse
-  | NextTaskResponse
   | AllTasksDoneResponse;

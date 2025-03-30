@@ -159,9 +159,9 @@ describe('MCP Client Integration', () => {
     }) as ToolResponse;
     expect(nextTaskResult.isError).toBeFalsy();
     const nextTask = JSON.parse((nextTaskResult.content[0] as { text: string }).text);
-    expect(nextTask.status).toBe("next_task");
-    expect(nextTask.task).toBeDefined();
-    const taskId = nextTask.task.id;
+    expect(nextTask.status).toBe("success");
+    expect(nextTask.data).toHaveProperty('task');
+    const taskId = nextTask.data.task.id;
     console.log('Got next task with ID:', taskId);
 
     // Mark task as done
@@ -202,7 +202,6 @@ describe('MCP Client Integration', () => {
   it('should have accurate version', async () => {
     console.log('Testing server version...');
     const response = await client.getServerVersion();
-    expect(response).toBeDefined();
     expect(response).toHaveProperty('version');
     // Should match package.json version
     const packageJson = JSON.parse(
@@ -242,9 +241,9 @@ describe('MCP Client Integration', () => {
     }) as ToolResponse;
     expect(nextTaskResult.isError).toBeFalsy();
     const nextTask = JSON.parse((nextTaskResult.content[0] as { text: string }).text);
-    expect(nextTask.status).toBe("next_task");
-    expect(nextTask.task).toBeDefined();
-    const taskId = nextTask.task.id;
+    expect(nextTask.status).toBe("success");
+    expect(nextTask.data).toHaveProperty('task');
+    const taskId = nextTask.data.task.id;
     
     // Mark task as done - we need to mark it as done using the update_task tool
     const markDoneResult = await client.callTool({

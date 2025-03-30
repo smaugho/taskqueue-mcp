@@ -237,16 +237,6 @@ const getNextTaskToolExecutor: ToolExecutor = {
   async execute(taskManager, args) {
     const projectId = validateProjectId(args.projectId);
     const result = await taskManager.getNextTask(projectId);
-
-    // Ensure backward compatibility with integration tests
-    if (result.status === "next_task" && result.data) {
-      return formatToolResponse({
-        status: "next_task",
-        task: result.data,
-        message: result.data.message,
-      });
-    }
-
     return formatToolResponse(result);
   },
 };
