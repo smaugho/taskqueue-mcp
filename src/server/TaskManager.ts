@@ -428,23 +428,14 @@ export class TaskManager {
     await this.ensureInitialized();
     // Reload from disk to ensure we have the latest data
     await this.reloadFromDisk();
-    
+
     for (const proj of this.data.projects) {
       const target = proj.tasks.find((t) => t.id === taskId);
       if (target) {
+        // Return only projectId and the full task object
         return createSuccessResponse({
           projectId: proj.projectId,
-          initialPrompt: proj.initialPrompt,
-          projectPlan: proj.projectPlan,
-          completed: proj.completed,
-          task: {
-            id: target.id,
-            title: target.title,
-            description: target.description,
-            status: target.status,
-            approved: target.approved,
-            completedDetails: target.completedDetails,
-          },
+          task: { ...target }, // Return all fields from the found task
         });
       }
     }

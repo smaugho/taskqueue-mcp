@@ -111,10 +111,7 @@ export interface ApproveProjectSuccessData {
 
 export interface OpenTaskSuccessData {
   projectId: string;
-  initialPrompt: string;
-  projectPlan: string;
-  completed: boolean;
-  task: Task; // Use the full Task type
+  task: Task;
 }
 
 export interface ListProjectsSuccessData {
