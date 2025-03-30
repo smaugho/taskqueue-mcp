@@ -216,7 +216,7 @@ const generateProjectPlanTool: Tool = {
         items: {
           type: "string",
         },
-        description: "Optional array of file contents or text to provide as context.",
+        description: "Optional array of paths to files to attach as context. There is no need to read the files before calling this tool!",
       },
     },
     required: ["prompt", "provider", "model"],
