@@ -10,7 +10,7 @@ import { ListToolsRequestSchema, CallToolRequestSchema } from "@modelcontextprot
 const server = new Server(
   {
     name: "task-manager-server",
-    version: "1.3.0"
+    version: "1.3.1"
   },
   {
     capabilities: {
