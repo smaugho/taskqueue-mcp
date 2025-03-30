@@ -100,9 +100,9 @@ describe('TaskManager Integration', () => {
       
       // 2. Get the next task (first task)
       const nextTaskResult = await server.getNextTask(projectId);
-      expect(nextTaskResult.status).toBe('next_task');
-      if (nextTaskResult.status === 'next_task' && nextTaskResult.data) {
-        expect(nextTaskResult.data.id).toBe(taskId1);
+      expect(nextTaskResult.status).toBe('success');
+      if (nextTaskResult.status === 'success' && 'task' in nextTaskResult.data) {
+        expect(nextTaskResult.data.task.id).toBe(taskId1);
       }
       
       // 3. Mark the first task as in progress
@@ -123,9 +123,9 @@ describe('TaskManager Integration', () => {
       
       // 6. Get the next task (second task)
       const nextTaskResult2 = await server.getNextTask(projectId);
-      expect(nextTaskResult2.status).toBe('next_task');
-      if (nextTaskResult2.status === 'next_task' && nextTaskResult2.data) {
-        expect(nextTaskResult2.data.id).toBe(taskId2);
+      expect(nextTaskResult2.status).toBe('success');
+      if (nextTaskResult2.status === 'success' && 'task' in nextTaskResult2.data) {
+        expect(nextTaskResult2.data.task.id).toBe(taskId2);
       }
       
       // 7. Mark the second task as in progress

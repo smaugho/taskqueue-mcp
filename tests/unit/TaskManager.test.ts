@@ -370,9 +370,9 @@ describe('TaskManager', () => {
         // Get the next task
         const nextTaskResult = await taskManager.getNextTask(projectId);
         
-        expect(nextTaskResult.status).toBe('next_task');
-        if (nextTaskResult.status === 'next_task') {
-          expect(nextTaskResult.data.id).toBe(createResult.data.tasks[0].id);
+        expect(nextTaskResult.status).toBe('success');
+        if (nextTaskResult.status === 'success' && 'task' in nextTaskResult.data) {
+          expect(nextTaskResult.data.task.id).toBe(createResult.data.tasks[0].id);
         }
       }
     });

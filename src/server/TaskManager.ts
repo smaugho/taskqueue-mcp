@@ -280,7 +280,7 @@ export class TaskManager {
     }
   }
 
-  public async getNextTask(projectId: string): Promise<StandardResponse> {
+  public async getNextTask(projectId: string): Promise<StandardResponse<OpenTaskSuccessData | { message: string }>> {
     await this.ensureInitialized();
     // Reload from disk to ensure we have the latest data
     await this.reloadFromDisk();
@@ -316,15 +316,11 @@ export class TaskManager {
       );
     }
 
-    return {
-      status: "next_task",
-      data: {
-        id: nextTask.id,
-        title: nextTask.title,
-        description: nextTask.description,
-        message: `Next task is ready. Task approval will be required after completion.\n`
-      }
-    };
+    // Return the full task details similar to openTaskDetails
+    return createSuccessResponse<OpenTaskSuccessData>({
+      projectId: proj.projectId,
+      task: { ...nextTask },
+    });
   }
 
   public async approveTaskCompletion(projectId: string, taskId: string): Promise<StandardResponse<ApproveTaskSuccessData>> {
@@ -428,23 +424,14 @@ export class TaskManager {
     await this.ensureInitialized();
     // Reload from disk to ensure we have the latest data
     await this.reloadFromDisk();
-    
+
     for (const proj of this.data.projects) {
       const target = proj.tasks.find((t) => t.id === taskId);
       if (target) {
+        // Return only projectId and the full task object
         return createSuccessResponse({
           projectId: proj.projectId,
-          initialPrompt: proj.initialPrompt,
-          projectPlan: proj.projectPlan,
-          completed: proj.completed,
-          task: {
-            id: target.id,
-            title: target.title,
-            description: target.description,
-            status: target.status,
-            approved: target.approved,
-            completedDetails: target.completedDetails,
-          },
+          task: { ...target }, // Return all fields from the found task
         });
       }
     }
