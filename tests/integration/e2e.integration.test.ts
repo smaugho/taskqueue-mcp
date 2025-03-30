@@ -5,6 +5,10 @@ import * as path from 'node:path';
 import * as os from 'node:os';
 import * as fs from 'node:fs/promises';
 import process from 'node:process';
+import dotenv from 'dotenv';
+
+// Load environment variables from .env file
+dotenv.config();
 
 interface ToolResponse {
   isError: boolean;
@@ -34,7 +38,9 @@ describe('MCP Client Integration', () => {
       env: {
         TASK_MANAGER_FILE_PATH: testFilePath,
         NODE_ENV: "test",
-        DEBUG: "mcp:*"  // Enable MCP debug logging
+        DEBUG: "mcp:*",  // Enable MCP debug logging
+        // Pass the API key from the test runner's env to the child process env
+        OPENAI_API_KEY: process.env.OPENAI_API_KEY ?? ''
       }
     });
 
@@ -284,5 +290,64 @@ describe('MCP Client Integration', () => {
     }) as ToolResponse;
     expect(finalizeResult.isError).toBeFalsy();
     console.log('Project was successfully finalized after explicit task approval');
+  });
+
+  // Skip by default as it requires OpenAI API key
+  it.skip('should generate a project plan using OpenAI', async () => {
+    console.log('Testing project plan generation...');
+    
+    // Skip if no OpenAI API key is set
+    const openaiApiKey = process.env.OPENAI_API_KEY;
+    if (!openaiApiKey) {
+      console.log('Skipping test: OPENAI_API_KEY not set');
+      return;
+    }
+
+    // Create a temporary requirements file
+    const requirementsPath = path.join(tempDir, 'requirements.md');
+    const requirements = `# Project Plan Requirements
+
+- This is a test of whether we are correctly attaching files to our prompt
+- Return a JSON project plan with one task
+- Task title must be 'AmazingTask'
+- Task description must be AmazingDescription
+- Project plan attribute should be AmazingPlan`;
+
+    await fs.writeFile(requirementsPath, requirements, 'utf-8');
+
+    // Test prompt and context
+    const testPrompt = "Create a step-by-step project plan to build a simple TODO app with React";
+
+    // Generate project plan
+    const generateResult = await client.callTool({
+      name: "generate_project_plan",
+      arguments: {
+        prompt: testPrompt,
+        provider: "openai",
+        model: "gpt-4-turbo",
+        attachments: [requirementsPath]
+      }
+    }) as ToolResponse;
+
+    expect(generateResult.isError).toBeFalsy();
+    const planData = JSON.parse((generateResult.content[0] as { text: string }).text);
+
+    // Verify the generated plan structure
+    expect(planData).toHaveProperty('data');
+    expect(planData.data).toHaveProperty('tasks');
+    expect(Array.isArray(planData.data.tasks)).toBe(true);
+    expect(planData.data.tasks.length).toBeGreaterThan(0);
+
+    // Verify task structure
+    const firstTask = planData.data.tasks[0];
+    expect(firstTask).toHaveProperty('title');
+    expect(firstTask).toHaveProperty('description');
+    
+    // Verify that the generated task adheres to the requirements file context
+    expect(firstTask.title).toBe('AmazingTask');
+    expect(firstTask.description).toBe('AmazingDescription');
+    
+    // The temporary file will be cleaned up by the afterAll hook that removes tempDir
+    console.log('Successfully generated project plan with tasks');
   });
 });

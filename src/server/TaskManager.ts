@@ -18,7 +18,6 @@ import {
 } from "../types/index.js";
 import { createError, createSuccessResponse } from "../utils/errors.js";
 import { generateObject, jsonSchema } from "ai";
-import { formatTaskProgressTable, formatProjectsList } from "./taskFormattingUtils.js";
 import { FileSystemService } from "./FileSystemService.js";
 
 // Default path follows platform-specific conventions
@@ -105,8 +104,6 @@ export class TaskManager {
 
     await this.saveTasks();
 
-    const progressTable = formatTaskProgressTable(newProject);
-
     return createSuccessResponse({
       projectId,
       totalTasks: newTasks.length,
@@ -115,7 +112,7 @@ export class TaskManager {
         title: t.title,
         description: t.description,
       })),
-      message: `Project ${projectId} created with ${newTasks.length} tasks.\n${progressTable}`,
+      message: `Project ${projectId} created with ${newTasks.length} tasks.`,
     });
   }
 
@@ -132,10 +129,50 @@ export class TaskManager {
   }): Promise<StandardResponse<ProjectCreationSuccessData>> {
     await this.ensureInitialized();
 
+    // Read all attachment files
+    const attachmentContents: string[] = [];
+    for (const filename of attachments) {
+      try {
+        console.log("We are about to try to read the file.")
+        const content = await this.fileSystemService.readAttachmentFile(filename);
+        attachmentContents.push(content);
+      } catch (error) {
+        // Propagate file read errors
+        throw createError(
+          ErrorCode.FileReadError,
+          `Failed to read attachment file: ${filename}`,
+          { originalError: error }
+        );
+      }
+    }
+
+    // Define the schema for the LLM's response using jsonSchema helper
+    const projectPlanSchema = jsonSchema<ProjectPlanOutput>({
+      type: "object",
+      properties: {
+        projectPlan: { type: "string" },
+        tasks: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              title: { type: "string" },
+              description: { type: "string" },
+              toolRecommendations: { type: "string" },
+              ruleRecommendations: { type: "string" },
+            },
+            required: ["title", "description"],
+          },
+        },
+      },
+      required: ["tasks"],
+    });
+
     // Wrap prompt and attachments in XML tags
     let llmPrompt = `<prompt>${prompt}</prompt>`;
-    for (const att of attachments) {
-      llmPrompt += `\n<attachment>${att}</attachment>`;
+    llmPrompt += `\n<outputFormat>Return your output as JSON formatted according to the following schema: ${JSON.stringify(projectPlanSchema, null, 2)}</outputFormat>`
+    for (const content of attachmentContents) {
+      llmPrompt += `\n<attachment>${content}</attachment>`;
     }
 
     // Import and configure the appropriate provider
@@ -159,28 +196,7 @@ export class TaskManager {
           `Invalid provider: ${provider}`
         );
     }
-
-    // Define the schema for the LLM's response using jsonSchema helper
-    const projectPlanSchema = jsonSchema<ProjectPlanOutput>({
-      type: "object",
-      properties: {
-        projectPlan: { type: "string" },
-        tasks: {
-          type: "array",
-          items: {
-            type: "object",
-            properties: {
-              title: { type: "string" },
-              description: { type: "string" },
-              toolRecommendations: { type: "string" },
-              ruleRecommendations: { type: "string" },
-            },
-            required: ["title", "description"],
-          },
-        },
-      },
-      required: ["projectPlan", "tasks"],
-    });
+    console.log("set model and provider")
 
     interface ProjectPlanOutput {
       projectPlan: string;
@@ -211,6 +227,7 @@ export class TaskManager {
     } catch (err) {
       // Handle specific AI SDK errors
       if (err instanceof Error) {
+        // Check for specific error names or messages
         if (err.name === 'NoObjectGeneratedError') {
           throw createError(
             ErrorCode.InvalidResponseFormat,
@@ -232,20 +249,33 @@ export class TaskManager {
             { originalError: err }
           );
         }
+        // --- Updated Check for API Key Errors ---
+        // Check by name (more robust) or message content
+        if (err.name === 'LoadAPIKeyError' || err.message.includes('API key is missing')) {
+           throw createError(
+            ErrorCode.ConfigurationError, // Use the correct code for config issues
+            "Invalid or missing API key. Please check your environment variables.", // More specific message
+            { originalError: err }
+          );
+        }
+        // Existing check for general auth errors (might still be relevant for other cases)
         if (err.message.includes('authentication') || err.message.includes('unauthorized')) {
           throw createError(
             ErrorCode.ConfigurationError,
-            "Invalid API key or authentication failed. Please check your environment variables.",
+            "Authentication failed with the LLM provider. Please check your credentials.",
             { originalError: err }
           );
         }
       }
 
-      // For unknown errors, preserve the original error but wrap it
+      // For unknown errors from the LLM/SDK, preserve the original error but wrap it.
+      // Use a more generic error code here if it's not one of the above.
+      // Perhaps keep InvalidResponseFormat or create a new one like LLMInteractionError?
+      // Let's stick with InvalidResponseFormat for now as it often manifests as bad output.
       throw createError(
-        ErrorCode.InvalidResponseFormat,
-        "Failed to generate project plan",
-        { originalError: err }
+        ErrorCode.InvalidResponseFormat, // Fallback code
+        "Failed to generate project plan due to an unexpected error.", // Fallback message
+        { originalError: err } // Always include original error for debugging
       );
     }
   }
@@ -273,11 +303,10 @@ export class TaskManager {
       // all tasks done?
       const allDone = proj.tasks.every((t) => t.status === "done");
       if (allDone && !proj.completed) {
-        const progressTable = formatTaskProgressTable(proj);
         return {
           status: "all_tasks_done",
           data: {
-            message: `All tasks have been completed. Awaiting project completion approval.\n${progressTable}`
+            message: `All tasks have been completed. Awaiting project completion approval.`
           }
         };
       }
@@ -287,14 +316,13 @@ export class TaskManager {
       );
     }
 
-    const progressTable = formatTaskProgressTable(proj);
     return {
       status: "next_task",
       data: {
         id: nextTask.id,
         title: nextTask.title,
         description: nextTask.description,
-        message: `Next task is ready. Task approval will be required after completion.\n${progressTable}`
+        message: `Next task is ready. Task approval will be required after completion.\n`
       }
     };
   }
@@ -448,9 +476,8 @@ export class TaskManager {
       });
     }
 
-    const projectsList = formatProjectsList(filteredProjects);
     return createSuccessResponse({
-      message: `Current projects in the system:\n${projectsList}`,
+      message: `Current projects in the system:`,
       projects: filteredProjects.map((proj) => ({
         projectId: proj.projectId,
         initialPrompt: proj.initialPrompt,
@@ -546,9 +573,8 @@ export class TaskManager {
     proj.tasks.push(...newTasks);
     await this.saveTasks();
 
-    const progressTable = formatTaskProgressTable(proj);
     return createSuccessResponse({
-      message: `Added ${newTasks.length} new tasks to project ${projectId}.\n${progressTable}`,
+      message: `Added ${newTasks.length} new tasks to project ${projectId}.`,
       newTasks: newTasks.map((t) => ({
         id: t.id,
         title: t.title,
@@ -629,9 +655,8 @@ export class TaskManager {
     proj.tasks.splice(taskIndex, 1);
     await this.saveTasks();
 
-    const progressTable = formatTaskProgressTable(proj);
     return createSuccessResponse({
-      message: `Task ${taskId} has been deleted from project ${projectId}.\n${progressTable}`,
+      message: `Task ${taskId} has been deleted from project ${projectId}.`,
     });
   }
 

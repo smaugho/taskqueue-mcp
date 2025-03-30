@@ -12,7 +12,7 @@ describe("CLI Integration Tests", () => {
   let tasksFilePath: string;
 
   beforeEach(async () => {
-    tempDir = path.join(os.tmpdir(), `task-manager-cli-test-${Date.now()}`);
+    tempDir = path.join(os.tmpdir(), `taskqueue-test-${Date.now()}`);
     await fs.mkdir(tempDir, { recursive: true });
     tasksFilePath = path.join(tempDir, "test-tasks.json");
     process.env.TASK_MANAGER_FILE_PATH = tasksFilePath;
@@ -136,35 +136,6 @@ describe("CLI Integration Tests", () => {
     expect(noTasks).toContain("No tasks found matching state 'completed' in project proj-1");
   }, 5000);
 
-  it("should show progress bars and status indicators correctly", async () => {
-    const { stdout } = await execAsync(`TASK_MANAGER_FILE_PATH=${tasksFilePath} tsx ${CLI_PATH} list`);
-    
-    // Check for progress indicators
-    expect(stdout).toContain("Progress:");
-    expect(stdout).toContain("approved/completed/total");
-    
-    // Check for status indicators
-    expect(stdout).toContain("In Progress");
-    expect(stdout).toContain("Completed ✓");
-  }, 5000);
-
-  it("should display tool and rule recommendations when listing tasks", async () => {
-    // Create a task with tool and rule recommendations
-    const testData = JSON.parse(await fs.readFile(tasksFilePath, 'utf-8'));
-    testData.projects[0].tasks[0].toolRecommendations = "Use grep to search for code";
-    testData.projects[0].tasks[0].ruleRecommendations = "Follow code style guidelines";
-    await fs.writeFile(tasksFilePath, JSON.stringify(testData));
-    
-    // Test listing the specific project with the updated task
-    const { stdout } = await execAsync(`TASK_MANAGER_FILE_PATH=${tasksFilePath} tsx ${CLI_PATH} list -p proj-1`);
-    
-    // Check that recommendations are displayed
-    expect(stdout).toContain("Tool Recommendations:");
-    expect(stdout).toContain("Use grep to search for code");
-    expect(stdout).toContain("Rule Recommendations:");
-    expect(stdout).toContain("Follow code style guidelines");
-  }, 5000);
-
   describe("generate-plan command", () => {
     beforeEach(() => {
       // Set mock API keys for testing
@@ -181,25 +152,29 @@ describe("CLI Integration Tests", () => {
 
     it("should handle missing API key gracefully", async () => {
       delete process.env.OPENAI_API_KEY;
-      
+
       const { stderr } = await execAsync(
         `TASK_MANAGER_FILE_PATH=${tasksFilePath} tsx ${CLI_PATH} generate-plan --prompt "Create a todo app" --provider openai`
       ).catch(error => error);
-      
+
       // Verify we get an error with the error code format
       expect(stderr).toContain("[ERR_");
-      // The actual error might not contain "API key" text, so we'll just check for a general error
-      expect(stderr).toContain("An unknown error occurred");
+      // The actual error should contain "API key" text
+      expect(stderr).toContain("API key");
     }, 5000);
 
     it("should handle invalid file attachments gracefully", async () => {
-      const { stderr } = await execAsync(
+      const { stdout, stderr } = await execAsync(
         `TASK_MANAGER_FILE_PATH=${tasksFilePath} tsx ${CLI_PATH} generate-plan --prompt "Create app" --attachment nonexistent.txt`
-      ).catch(error => error);
-      
-      // Just verify we get a warning about the attachment
-      expect(stderr).toContain("Warning:");
-      expect(stderr).toContain("nonexistent.txt");
+      ).catch(error => ({ stdout: error.stdout, stderr: error.stderr }));
+
+      // Keep these console logs temporarily if helpful for debugging during development
+      // console.log("Test stdout:", stdout); 
+      // console.log("Test stderr:", stderr);
+
+      // Updated assertion to match the formatCliError output
+      expect(stderr).toContain("[ERR_4000] Failed to read attachment file: nonexistent.txt");
+      expect(stderr).toContain("-> Details: Attachment file not found: nonexistent.txt");
     }, 5000);
   });
 }); 
