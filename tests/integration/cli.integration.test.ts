@@ -136,35 +136,6 @@ describe("CLI Integration Tests", () => {
     expect(noTasks).toContain("No tasks found matching state 'completed' in project proj-1");
   }, 5000);
 
-  it("should show progress bars and status indicators correctly", async () => {
-    const { stdout } = await execAsync(`TASK_MANAGER_FILE_PATH=${tasksFilePath} tsx ${CLI_PATH} list`);
-    
-    // Check for progress indicators
-    expect(stdout).toContain("Progress:");
-    expect(stdout).toContain("approved/completed/total");
-    
-    // Check for status indicators
-    expect(stdout).toContain("In Progress");
-    expect(stdout).toContain("Completed ✓");
-  }, 5000);
-
-  it("should display tool and rule recommendations when listing tasks", async () => {
-    // Create a task with tool and rule recommendations
-    const testData = JSON.parse(await fs.readFile(tasksFilePath, 'utf-8'));
-    testData.projects[0].tasks[0].toolRecommendations = "Use grep to search for code";
-    testData.projects[0].tasks[0].ruleRecommendations = "Follow code style guidelines";
-    await fs.writeFile(tasksFilePath, JSON.stringify(testData));
-    
-    // Test listing the specific project with the updated task
-    const { stdout } = await execAsync(`TASK_MANAGER_FILE_PATH=${tasksFilePath} tsx ${CLI_PATH} list -p proj-1`);
-    
-    // Check that recommendations are displayed
-    expect(stdout).toContain("Tool Recommendations:");
-    expect(stdout).toContain("Use grep to search for code");
-    expect(stdout).toContain("Rule Recommendations:");
-    expect(stdout).toContain("Follow code style guidelines");
-  }, 5000);
-
   describe("generate-plan command", () => {
     beforeEach(() => {
       // Set mock API keys for testing

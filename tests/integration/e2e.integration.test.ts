@@ -38,7 +38,9 @@ describe('MCP Client Integration', () => {
       env: {
         TASK_MANAGER_FILE_PATH: testFilePath,
         NODE_ENV: "test",
-        DEBUG: "mcp:*"  // Enable MCP debug logging
+        DEBUG: "mcp:*",  // Enable MCP debug logging
+        // Pass the API key from the test runner's env to the child process env
+        OPENAI_API_KEY: process.env.OPENAI_API_KEY ?? ''
       }
     });
 
@@ -303,15 +305,15 @@ describe('MCP Client Integration', () => {
 
     // Create a temporary requirements file
     const requirementsPath = path.join(tempDir, 'requirements.md');
-    const requirements = `# TODO App Requirements
+    const requirements = `# Project Plan Requirements
 
-- Use React for the frontend
-- Include add, delete, and mark complete functionality
-- Store todos in local storage
-- Add basic styling`;
+- This is a test of whether we are correctly attaching files to our prompt
+- Return a JSON project plan with one task
+- Task title must be 'AmazingTask'
+- Task description must be AmazingDescription
+- Project plan attribute should be AmazingPlan`;
 
     await fs.writeFile(requirementsPath, requirements, 'utf-8');
-    console.log('Created temporary requirements file:', requirementsPath);
 
     // Test prompt and context
     const testPrompt = "Create a step-by-step project plan to build a simple TODO app with React";
@@ -329,10 +331,9 @@ describe('MCP Client Integration', () => {
 
     expect(generateResult.isError).toBeFalsy();
     const planData = JSON.parse((generateResult.content[0] as { text: string }).text);
-    
+
     // Verify the generated plan structure
     expect(planData).toHaveProperty('data');
-    expect(planData.data).toHaveProperty('projectPlan');
     expect(planData.data).toHaveProperty('tasks');
     expect(Array.isArray(planData.data.tasks)).toBe(true);
     expect(planData.data.tasks.length).toBeGreaterThan(0);
@@ -341,6 +342,10 @@ describe('MCP Client Integration', () => {
     const firstTask = planData.data.tasks[0];
     expect(firstTask).toHaveProperty('title');
     expect(firstTask).toHaveProperty('description');
+    
+    // Verify that the generated task adheres to the requirements file context
+    expect(firstTask.title).toBe('AmazingTask');
+    expect(firstTask.description).toBe('AmazingDescription');
     
     // The temporary file will be cleaned up by the afterAll hook that removes tempDir
     console.log('Successfully generated project plan with tasks');

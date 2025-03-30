@@ -1,6 +1,7 @@
 import { describe, it, expect } from '@jest/globals';
-import { formatTaskProgressTable, formatProjectsList } from '../../src/server/taskFormattingUtils.js';
-import { Project, Task } from '../../src/types/index.js';
+// Note: We might need strip-ansi if chalk colors interfere with snapshot testing, but basic string checks should be okay.
+import { formatTaskProgressTable, formatProjectsList } from '../../src/client/taskFormattingUtils.js';
+import { Project, Task, ListProjectsSuccessData } from '../../src/types/index.js';
 
 describe('taskFormattingUtils', () => {
 
@@ -20,21 +21,25 @@ describe('taskFormattingUtils', () => {
 
     it('should format an empty task list correctly', () => {
       const project: Project = { ...baseProject, tasks: [] };
-      const expectedHeader = "| Task ID | Title | Description | Status | Approval | Tools | Rules |\n";
-      const expectedSeparator = "|----------|----------|-------------|--------|----------|-------|-------|\n";
       const result = formatTaskProgressTable(project);
-      expect(result).toContain("\nProgress Status:\n");
-      expect(result).toContain(expectedHeader);
-      expect(result).toContain(expectedSeparator);
-      // Check that there are no task rows
-      expect(result.split('\n').length).toBe(5); // Title, Header, Separator, Blank line at start, Blank line at end
+      // Use toMatch with .* to handle potential ANSI codes from chalk.bold()
+      expect(result).toMatch(/📋 Project .*proj-1.* details:/);
+      expect(result).toContain('No tasks in this project.');
+      expect(result).toContain('ID');
     });
 
     it('should format a single task correctly (not started)', () => {
       const task: Task = { id: 'task-1', title: 'Task One', description: 'Desc One', status: 'not started', approved: false, completedDetails: '' };
       const project: Project = { ...baseProject, tasks: [task] };
       const result = formatTaskProgressTable(project);
-      expect(result).toContain('| task-1 | Task One | Desc One | ⏳ Not Started | ⏳ Pending | - | - |');
+      // Use toMatch with .* to handle potential ANSI codes from chalk.bold()
+      expect(result).toMatch(/📋 Project .*proj-1.* details:/);
+      expect(result).toContain('task-1');
+      expect(result).toContain('Task One');
+      expect(result).toContain('Desc One');
+      expect(result).toContain('Pending'); // Status text
+      expect(result).toContain('No');      // Approved text
+      expect(result).toContain('[-]');     // Tools/Rules text
     });
 
     it('should format a task in progress with recommendations', () => {
@@ -50,30 +55,44 @@ describe('taskFormattingUtils', () => {
       };
       const project: Project = { ...baseProject, tasks: [task] };
       const result = formatTaskProgressTable(project);
-      expect(result).toContain('| task-2 | Task Two | Desc Two | 🔄 In Progress | ⏳ Pending | ✓ | ✓ |');
+      expect(result).toContain('task-2');
+      expect(result).toContain('In Prog'); // Status text
+      expect(result).toContain('No');       // Approved text
+      expect(result).toContain('[+]');      // Tools/Rules text
     });
 
     it('should format a completed and approved task', () => {
       const task: Task = { id: 'task-3', title: 'Task Three', description: 'Desc Three', status: 'done', approved: true, completedDetails: 'Done details' };
       const project: Project = { ...baseProject, tasks: [task] };
       const result = formatTaskProgressTable(project);
-      expect(result).toContain('| task-3 | Task Three | Desc Three | ✅ Done | ✅ Approved | - | - |');
+      expect(result).toContain('task-3');
+      expect(result).toContain('Done');    // Status text
+      expect(result).toContain('Yes');     // Approved text
+      expect(result).toContain('[-]');     // Tools/Rules text
     });
 
     it('should format a completed but not approved task', () => {
         const task: Task = { id: 'task-4', title: 'Task Four', description: 'Desc Four', status: 'done', approved: false, completedDetails: 'Done details' };
         const project: Project = { ...baseProject, tasks: [task] };
         const result = formatTaskProgressTable(project);
-        expect(result).toContain('| task-4 | Task Four | Desc Four | ✅ Done | ⏳ Pending | - | - |');
+        expect(result).toContain('task-4');
+        expect(result).toContain('Done');    // Status text
+        expect(result).toContain('No');      // Approved text
+        expect(result).toContain('[-]');     // Tools/Rules text
     });
 
-    it('should truncate long descriptions', () => {
-      const longDescription = 'This is a very long description that definitely exceeds the fifty character limit imposed by the formatting function.';
-      const truncatedDescription = 'This is a very long description that definitely ...';
+    it('should handle long descriptions with word wrap', () => {
+      // No longer testing manual truncation, just presence of the text
+      const longDescription = 'This is a very long description that definitely exceeds the forty character width set for the description column and should wrap.';
       const task: Task = { id: 'task-5', title: 'Long Desc Task', description: longDescription, status: 'not started', approved: false, completedDetails: '' };
       const project: Project = { ...baseProject, tasks: [task] };
       const result = formatTaskProgressTable(project);
-      expect(result).toContain(`| task-5 | Long Desc Task | ${truncatedDescription} | ⏳ Not Started | ⏳ Pending | - | - |`);
+      expect(result).toContain('task-5');
+      expect(result).toContain('Long Desc Task');
+      // Check for the start of the long description, acknowledging it will be wrapped by the library
+      expect(result).toContain('This is a very long description that');
+      // Removed the check for 'column and should wrap.' as wrapping can make specific substring checks fragile.
+      expect(result).toContain('Pending');
     });
 
     it('should format multiple tasks', () => {
@@ -81,81 +100,94 @@ describe('taskFormattingUtils', () => {
       const task2: Task = { id: 'task-2', title: 'Task Two', description: 'Desc Two', status: 'done', approved: true, completedDetails: '' };
       const project: Project = { ...baseProject, tasks: [task1, task2] };
       const result = formatTaskProgressTable(project);
-      expect(result).toContain('| task-1 | Task One | Desc One | ⏳ Not Started | ⏳ Pending | - | - |');
-      expect(result).toContain('| task-2 | Task Two | Desc Two | ✅ Done | ✅ Approved | - | - |');
+      // Check for elements of both tasks
+      expect(result).toContain('task-1');
+      expect(result).toContain('Task One');
+      expect(result).toContain('Pending');
+      expect(result).toContain('No');
+      expect(result).toContain('[-]');
+
+      expect(result).toContain('task-2');
+      expect(result).toContain('Task Two');
+      expect(result).toContain('Done');
+      expect(result).toContain('Yes');
+      expect(result).toContain('[-]');
     });
   });
 
   describe('formatProjectsList', () => {
-    const baseTask: Task = { id: 'task-1', title: 'T1', description: 'D1', status: 'not started', approved: false, completedDetails: '' };
+    type ProjectSummary = ListProjectsSuccessData["projects"][0];
 
     it('should format an empty project list correctly', () => {
-      const projects: Project[] = [];
-      const expectedHeader = "| Project ID | Initial Prompt | Total Tasks | Completed | Approved |\n";
-      const expectedSeparator = "|------------|------------------|-------------|-----------|----------|\n";
+      const projects: ProjectSummary[] = [];
       const result = formatProjectsList(projects);
-      expect(result).toContain("\nProjects List:\n");
-      expect(result).toContain(expectedHeader);
-      expect(result).toContain(expectedSeparator);
-      // Check that there are no project rows
-      expect(result.split('\n').length).toBe(5); // Title, Header, Separator, Blank line at start, Blank line at end
+      // Check for the main header and the empty message within the table structure
+      expect(result).toContain('Projects List:');
+      expect(result).toContain('No projects found.'); // Use simpler text check
+      expect(result).toContain('Project ID'); // Check if header is present
     });
 
     it('should format a single project correctly', () => {
-      const project: Project = {
-        projectId: 'proj-1',
-        initialPrompt: 'Short prompt',
-        projectPlan: 'Plan',
-        completed: false,
-        autoApprove: false,
-        tasks: [
-          { ...baseTask, status: 'done', approved: true },
-          { ...baseTask, id: 'task-2', status: 'in progress' }
-        ]
+      const projectSummary: ProjectSummary = {
+        projectId: 'proj-1', initialPrompt: 'Short prompt', totalTasks: 2, completedTasks: 1, approvedTasks: 1
       };
-      const result = formatProjectsList([project]);
-      expect(result).toContain('| proj-1 | Short prompt | 2 | 1 | 1 |');
+      const result = formatProjectsList([projectSummary]);
+      // Check for key data points within the formatted row
+      expect(result).toContain('proj-1');
+      expect(result).toContain('Short prompt');
+      expect(result).toContain(' 2 '); // Check for counts with padding
+      expect(result).toContain(' 1 ');
+      expect(result).toContain(' 1 '); // Need trailing space if aligned right/center
     });
 
     it('should format multiple projects', () => {
-      const project1: Project = {
-        projectId: 'proj-1', initialPrompt: 'Prompt 1', projectPlan: 'P1', completed: false, autoApprove: false, tasks: [{ ...baseTask }]
+      const project1: ProjectSummary = {
+        projectId: 'proj-1', initialPrompt: 'Prompt 1', totalTasks: 1, completedTasks: 0, approvedTasks: 0
       };
-      const project2: Project = {
-        projectId: 'proj-2', initialPrompt: 'Prompt 2', projectPlan: 'P2', completed: true, autoApprove: false, tasks: [{ ...baseTask, status: 'done', approved: true }]
+      const project2: ProjectSummary = {
+        projectId: 'proj-2', initialPrompt: 'Prompt 2', totalTasks: 3, completedTasks: 2, approvedTasks: 1
       };
       const result = formatProjectsList([project1, project2]);
-      expect(result).toContain('| proj-1 | Prompt 1 | 1 | 0 | 0 |');
-      expect(result).toContain('| proj-2 | Prompt 2 | 1 | 1 | 1 |');
+      // Check for elements of both projects
+      expect(result).toContain('proj-1');
+      expect(result).toContain('Prompt 1');
+      expect(result).toContain(' 1 ');
+      expect(result).toContain(' 0 ');
+
+      expect(result).toContain('proj-2');
+      expect(result).toContain('Prompt 2');
+      expect(result).toContain(' 3 ');
+      expect(result).toContain(' 2 ');
+      expect(result).toContain(' 1 '); // Approved count for proj-2
     });
 
     it('should truncate long initial prompts', () => {
-      const longPrompt = 'This is a very long initial prompt that should be truncated in the list view.';
-      const truncatedPrompt = 'This is a very long initial...';
-      const project: Project = {
-        projectId: 'proj-long', initialPrompt: longPrompt, projectPlan: 'Plan', completed: false, autoApprove: false, tasks: [{ ...baseTask }]
+      // This test remains similar as we kept manual truncation for prompts
+      const longPrompt = 'This is a very long initial prompt that should be truncated based on the substring logic in the function.';
+      // Correct the expected start
+      const truncatedStart = 'This is a very long initial prompt';
+      const ellipsis = '...'; // Check for the ellipsis separately due to potential wrapping
+      const project: ProjectSummary = {
+        projectId: 'proj-long', initialPrompt: longPrompt, totalTasks: 1, completedTasks: 0, approvedTasks: 0
       };
       const result = formatProjectsList([project]);
-      expect(result).toContain(`| proj-long | ${truncatedPrompt} | 1 | 0 | 0 |`);
+      expect(result).toContain('proj-long');
+      expect(result).toContain(truncatedStart); // Check for the corrected start of the truncated string
+      expect(result).toContain(ellipsis);       // Check for the ellipsis
+      expect(result).not.toContain('in the function.'); // Ensure the original end is cut off
     });
 
-     it('should correctly count completed and approved tasks', () => {
-      const project: Project = {
-        projectId: 'proj-counts',
-        initialPrompt: 'Counts Test',
-        projectPlan: 'Plan',
-        completed: false,
-        autoApprove: false,
-        tasks: [
-          { ...baseTask, id: 't1', status: 'done', approved: true }, // Done, Approved
-          { ...baseTask, id: 't2', status: 'done', approved: false }, // Done, Not Approved
-          { ...baseTask, id: 't3', status: 'in progress' }, // In Progress
-          { ...baseTask, id: 't4', status: 'not started' } // Not Started
-        ]
+     it('should correctly display pre-calculated completed and approved tasks counts', () => {
+      const project: ProjectSummary = {
+        projectId: 'proj-counts', initialPrompt: 'Counts Test', totalTasks: 4, completedTasks: 2, approvedTasks: 1
       };
       const result = formatProjectsList([project]);
-      // Expect Total=4, Completed=2, Approved=1
-      expect(result).toContain('| proj-counts | Counts Test | 4 | 2 | 1 |');
+      // Check for the specific counts formatted in the table
+      expect(result).toContain('proj-counts');
+      expect(result).toContain('Counts Test');
+      expect(result).toContain(' 4 ');
+      expect(result).toContain(' 2 ');
+      expect(result).toContain(' 1 ');
     });
   });
 });

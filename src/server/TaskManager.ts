@@ -18,7 +18,6 @@ import {
 } from "../types/index.js";
 import { createError, createSuccessResponse } from "../utils/errors.js";
 import { generateObject, jsonSchema } from "ai";
-import { formatTaskProgressTable, formatProjectsList } from "./taskFormattingUtils.js";
 import { FileSystemService } from "./FileSystemService.js";
 
 // Default path follows platform-specific conventions
@@ -105,8 +104,6 @@ export class TaskManager {
 
     await this.saveTasks();
 
-    const progressTable = formatTaskProgressTable(newProject);
-
     return createSuccessResponse({
       projectId,
       totalTasks: newTasks.length,
@@ -115,7 +112,7 @@ export class TaskManager {
         title: t.title,
         description: t.description,
       })),
-      message: `Project ${projectId} created with ${newTasks.length} tasks.\n${progressTable}`,
+      message: `Project ${projectId} created with ${newTasks.length} tasks.`,
     });
   }
 
@@ -149,8 +146,31 @@ export class TaskManager {
       }
     }
 
+    // Define the schema for the LLM's response using jsonSchema helper
+    const projectPlanSchema = jsonSchema<ProjectPlanOutput>({
+      type: "object",
+      properties: {
+        projectPlan: { type: "string" },
+        tasks: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              title: { type: "string" },
+              description: { type: "string" },
+              toolRecommendations: { type: "string" },
+              ruleRecommendations: { type: "string" },
+            },
+            required: ["title", "description"],
+          },
+        },
+      },
+      required: ["tasks"],
+    });
+
     // Wrap prompt and attachments in XML tags
     let llmPrompt = `<prompt>${prompt}</prompt>`;
+    llmPrompt += `\n<outputFormat>Return your output as JSON formatted according to the following schema: ${JSON.stringify(projectPlanSchema, null, 2)}</outputFormat>`
     for (const content of attachmentContents) {
       llmPrompt += `\n<attachment>${content}</attachment>`;
     }
@@ -177,28 +197,6 @@ export class TaskManager {
         );
     }
     console.log("set model and provider")
-
-    // Define the schema for the LLM's response using jsonSchema helper
-    const projectPlanSchema = jsonSchema<ProjectPlanOutput>({
-      type: "object",
-      properties: {
-        projectPlan: { type: "string" },
-        tasks: {
-          type: "array",
-          items: {
-            type: "object",
-            properties: {
-              title: { type: "string" },
-              description: { type: "string" },
-              toolRecommendations: { type: "string" },
-              ruleRecommendations: { type: "string" },
-            },
-            required: ["title", "description"],
-          },
-        },
-      },
-      required: ["projectPlan", "tasks"],
-    });
 
     interface ProjectPlanOutput {
       projectPlan: string;
@@ -305,11 +303,10 @@ export class TaskManager {
       // all tasks done?
       const allDone = proj.tasks.every((t) => t.status === "done");
       if (allDone && !proj.completed) {
-        const progressTable = formatTaskProgressTable(proj);
         return {
           status: "all_tasks_done",
           data: {
-            message: `All tasks have been completed. Awaiting project completion approval.\n${progressTable}`
+            message: `All tasks have been completed. Awaiting project completion approval.`
           }
         };
       }
@@ -319,14 +316,13 @@ export class TaskManager {
       );
     }
 
-    const progressTable = formatTaskProgressTable(proj);
     return {
       status: "next_task",
       data: {
         id: nextTask.id,
         title: nextTask.title,
         description: nextTask.description,
-        message: `Next task is ready. Task approval will be required after completion.\n${progressTable}`
+        message: `Next task is ready. Task approval will be required after completion.\n`
       }
     };
   }
@@ -480,9 +476,8 @@ export class TaskManager {
       });
     }
 
-    const projectsList = formatProjectsList(filteredProjects);
     return createSuccessResponse({
-      message: `Current projects in the system:\n${projectsList}`,
+      message: `Current projects in the system:`,
       projects: filteredProjects.map((proj) => ({
         projectId: proj.projectId,
         initialPrompt: proj.initialPrompt,
@@ -578,9 +573,8 @@ export class TaskManager {
     proj.tasks.push(...newTasks);
     await this.saveTasks();
 
-    const progressTable = formatTaskProgressTable(proj);
     return createSuccessResponse({
-      message: `Added ${newTasks.length} new tasks to project ${projectId}.\n${progressTable}`,
+      message: `Added ${newTasks.length} new tasks to project ${projectId}.`,
       newTasks: newTasks.map((t) => ({
         id: t.id,
         title: t.title,
@@ -661,9 +655,8 @@ export class TaskManager {
     proj.tasks.splice(taskIndex, 1);
     await this.saveTasks();
 
-    const progressTable = formatTaskProgressTable(proj);
     return createSuccessResponse({
-      message: `Task ${taskId} has been deleted from project ${projectId}.\n${progressTable}`,
+      message: `Task ${taskId} has been deleted from project ${projectId}.`,
     });
   }
 
