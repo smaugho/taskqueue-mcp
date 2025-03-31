@@ -3,9 +3,6 @@ import {
   Task,
   TaskManagerFile,
   TaskState,
-  StandardResponse,
-  ErrorCode,
-  Project,
   ProjectCreationSuccessData,
   ApproveTaskSuccessData,
   ApproveProjectSuccessData,
@@ -14,15 +11,84 @@ import {
   ListTasksSuccessData,
   AddTasksSuccessData,
   DeleteTaskSuccessData,
-  ReadProjectSuccessData
+  ReadProjectSuccessData,
+  Project
 } from "../types/index.js";
-import { createError, createSuccessResponse } from "../utils/errors.js";
-import { generateObject, jsonSchema } from "ai";
 import { FileSystemService } from "./FileSystemService.js";
+import { generateObject, jsonSchema } from "ai";
 
 // Default path follows platform-specific conventions
 const DEFAULT_PATH = path.join(FileSystemService.getAppDataDir(), "tasks.json");
 const TASK_FILE_PATH = process.env.TASK_MANAGER_FILE_PATH || DEFAULT_PATH;
+
+// Custom error classes for business logic errors
+export class ProjectNotFoundError extends Error {
+  constructor(projectId: string) {
+    super(`Project ${projectId} not found`);
+    this.name = 'ProjectNotFoundError';
+  }
+}
+
+export class TaskNotFoundError extends Error {
+  constructor(taskId: string) {
+    super(`Task ${taskId} not found`);
+    this.name = 'TaskNotFoundError';
+  }
+}
+
+export class ProjectAlreadyCompletedError extends Error {
+  constructor() {
+    super('Project is already completed');
+    this.name = 'ProjectAlreadyCompletedError';
+  }
+}
+
+export class TaskNotDoneError extends Error {
+  constructor() {
+    super('Task not done yet');
+    this.name = 'TaskNotDoneError';
+  }
+}
+
+export class TasksNotAllDoneError extends Error {
+  constructor() {
+    super('Not all tasks are done');
+    this.name = 'TasksNotAllDoneError';
+  }
+}
+
+export class TasksNotAllApprovedError extends Error {
+  constructor() {
+    super('Not all done tasks are approved');
+    this.name = 'TasksNotAllApprovedError';
+  }
+}
+
+export class FileReadError extends Error {
+  constructor(filename: string, originalError?: unknown) {
+    super(`Failed to read attachment file: ${filename}`);
+    this.name = 'FileReadError';
+    (this as any).originalError = originalError;
+  }
+}
+
+export class ConfigurationError extends Error {
+  constructor(message: string, originalError?: unknown) {
+    super(message);
+    this.name = 'ConfigurationError';
+    (this as any).originalError = originalError;
+  }
+}
+
+interface ProjectPlanOutput {
+  projectPlan: string;
+  tasks: Array<{
+    title: string;
+    description: string;
+    toolRecommendations?: string;
+    ruleRecommendations?: string;
+  }>;
+}
 
 export class TaskManager {
   private projectCounter = 0;
@@ -47,11 +113,6 @@ export class TaskManager {
     await this.initialized;
   }
 
-  /**
-   * Reloads data from disk
-   * This is helpful when the task file might have been modified by another process
-   * Used internally before read operations
-   */
   public async reloadFromDisk(): Promise<void> {
     const data = await this.fileSystemService.reloadTasks();
     this.data = data;
@@ -69,10 +130,10 @@ export class TaskManager {
     tasks: { title: string; description: string; toolRecommendations?: string; ruleRecommendations?: string }[],
     projectPlan?: string,
     autoApprove?: boolean
-  ): Promise<StandardResponse<ProjectCreationSuccessData>> {
+  ): Promise<ProjectCreationSuccessData> {
     await this.ensureInitialized();
-    // Reload before creating to ensure counters are up-to-date
     await this.reloadFromDisk();
+    
     this.projectCounter += 1;
     const projectId = `proj-${this.projectCounter}`;
 
@@ -101,10 +162,9 @@ export class TaskManager {
     };
 
     this.data.projects.push(newProject);
-
     await this.saveTasks();
 
-    return createSuccessResponse({
+    return {
       projectId,
       totalTasks: newTasks.length,
       tasks: newTasks.map((t) => ({
@@ -113,7 +173,7 @@ export class TaskManager {
         description: t.description,
       })),
       message: `Project ${projectId} created with ${newTasks.length} tasks.`,
-    });
+    };
   }
 
   public async generateProjectPlan({
@@ -126,23 +186,17 @@ export class TaskManager {
     provider: string;
     model: string;
     attachments: string[];
-  }): Promise<StandardResponse<ProjectCreationSuccessData>> {
+  }): Promise<ProjectCreationSuccessData> {
     await this.ensureInitialized();
 
     // Read all attachment files
     const attachmentContents: string[] = [];
     for (const filename of attachments) {
       try {
-        console.log("We are about to try to read the file.")
         const content = await this.fileSystemService.readAttachmentFile(filename);
         attachmentContents.push(content);
       } catch (error) {
-        // Propagate file read errors
-        throw createError(
-          ErrorCode.FileReadError,
-          `Failed to read attachment file: ${filename}`,
-          { originalError: error }
-        );
+        throw new FileReadError(filename, error);
       }
     }
 
@@ -191,166 +245,85 @@ export class TaskManager {
         modelProvider = deepseek(model);
         break;
       default:
-        throw createError(
-          ErrorCode.InvalidArgument,
-          `Invalid provider: ${provider}`
-        );
-    }
-    console.log("set model and provider")
-
-    interface ProjectPlanOutput {
-      projectPlan: string;
-      tasks: Array<{
-        title: string;
-        description: string;
-        toolRecommendations?: string;
-        ruleRecommendations?: string;
-      }>;
+        throw new Error(`Invalid provider: ${provider}`);
     }
 
     try {
-      // Call the LLM to generate the project plan
-      const { object } = await generateObject<ProjectPlanOutput>({
+      const { object } = await generateObject({
         model: modelProvider,
         schema: projectPlanSchema,
         prompt: llmPrompt,
       });
-
-      // Create a new project with the generated plan and tasks
-      const result = await this.createProject(
-        prompt,
-        object.tasks,
-        object.projectPlan
-      );
-
-      return result;
-    } catch (err) {
-      // Handle specific AI SDK errors
-      if (err instanceof Error) {
-        // Check for specific error names or messages
-        if (err.name === 'NoObjectGeneratedError') {
-          throw createError(
-            ErrorCode.InvalidResponseFormat,
-            "The LLM failed to generate a valid project plan. Please try again with a clearer prompt.",
-            { originalError: err }
-          );
-        }
-        if (err.name === 'InvalidJSONError') {
-          throw createError(
-            ErrorCode.InvalidResponseFormat,
-            "The LLM generated invalid JSON. Please try again.",
-            { originalError: err }
-          );
-        }
-        if (err.message.includes('rate limit') || err.message.includes('quota')) {
-          throw createError(
-            ErrorCode.ConfigurationError,
-            "Rate limit or quota exceeded for the LLM provider. Please try again later.",
-            { originalError: err }
-          );
-        }
-        // --- Updated Check for API Key Errors ---
-        // Check by name (more robust) or message content
-        if (err.name === 'LoadAPIKeyError' || err.message.includes('API key is missing')) {
-           throw createError(
-            ErrorCode.ConfigurationError, // Use the correct code for config issues
-            "Invalid or missing API key. Please check your environment variables.", // More specific message
-            { originalError: err }
-          );
-        }
-        // Existing check for general auth errors (might still be relevant for other cases)
-        if (err.message.includes('authentication') || err.message.includes('unauthorized')) {
-          throw createError(
-            ErrorCode.ConfigurationError,
-            "Authentication failed with the LLM provider. Please check your credentials.",
-            { originalError: err }
-          );
-        }
+      return await this.createProject(prompt, object.tasks, object.projectPlan);
+    } catch (err: any) {
+      // Handle specific error cases
+      if (err.name === 'LoadAPIKeyError' || err.message.includes('API key is missing')) {
+        throw new ConfigurationError(
+          "Invalid or missing API key. Please check your environment variables.",
+          err
+        );
       }
-
-      // For unknown errors from the LLM/SDK, preserve the original error but wrap it.
-      // Use a more generic error code here if it's not one of the above.
-      // Perhaps keep InvalidResponseFormat or create a new one like LLMInteractionError?
-      // Let's stick with InvalidResponseFormat for now as it often manifests as bad output.
-      throw createError(
-        ErrorCode.InvalidResponseFormat, // Fallback code
-        "Failed to generate project plan due to an unexpected error.", // Fallback message
-        { originalError: err } // Always include original error for debugging
-      );
+      if (err.message.includes('authentication') || err.message.includes('unauthorized')) {
+        throw new ConfigurationError(
+          "Authentication failed with the LLM provider. Please check your credentials.",
+          err
+        );
+      }
+      // For unknown errors, preserve the original error but wrap it
+      throw new Error("Failed to generate project plan due to an unexpected error", { cause: err });
     }
   }
 
-  public async getNextTask(projectId: string): Promise<StandardResponse<OpenTaskSuccessData | { message: string }>> {
+  public async getNextTask(projectId: string): Promise<OpenTaskSuccessData | { message: string }> {
     await this.ensureInitialized();
-    // Reload from disk to ensure we have the latest data
     await this.reloadFromDisk();
     
     const proj = this.data.projects.find((p) => p.projectId === projectId);
     if (!proj) {
-      throw createError(
-        ErrorCode.ProjectNotFound,
-        `Project ${projectId} not found`
-      );
+      throw new ProjectNotFoundError(projectId);
     }
     if (proj.completed) {
-      throw createError(
-        ErrorCode.ProjectAlreadyCompleted,
-        "Project is already completed"
-      );
+      throw new ProjectAlreadyCompletedError();
     }
+
     const nextTask = proj.tasks.find((t) => t.status !== "done");
     if (!nextTask) {
       // all tasks done?
       const allDone = proj.tasks.every((t) => t.status === "done");
       if (allDone && !proj.completed) {
         return {
-          status: "all_tasks_done",
-          data: {
-            message: `All tasks have been completed. Awaiting project completion approval.`
-          }
+          message: `All tasks have been completed. Awaiting project completion approval.`
         };
       }
-      throw createError(
-        ErrorCode.TaskNotFound,
-        "No undone tasks found"
-      );
+      throw new TaskNotFoundError("No undone tasks found");
     }
 
-    // Return the full task details similar to openTaskDetails
-    return createSuccessResponse<OpenTaskSuccessData>({
+    return {
       projectId: proj.projectId,
       task: { ...nextTask },
-    });
+    };
   }
 
-  public async approveTaskCompletion(projectId: string, taskId: string): Promise<StandardResponse<ApproveTaskSuccessData>> {
+  public async approveTaskCompletion(projectId: string, taskId: string): Promise<ApproveTaskSuccessData> {
     await this.ensureInitialized();
-    // Reload before modifying
     await this.reloadFromDisk();
+
     const proj = this.data.projects.find((p) => p.projectId === projectId);
     if (!proj) {
-      throw createError(
-        ErrorCode.ProjectNotFound,
-        `Project ${projectId} not found`
-      );
+      throw new ProjectNotFoundError(projectId);
     }
+
     const task = proj.tasks.find((t) => t.id === taskId);
     if (!task) {
-      throw createError(
-        ErrorCode.TaskNotFound,
-        `Task ${taskId} not found`
-      );
+      throw new TaskNotFoundError(taskId);
     }
+
     if (task.status !== "done") {
-      throw createError(
-        ErrorCode.TaskNotDone,
-        "Task not done yet"
-      );
+      throw new TaskNotDoneError();
     }
+
     if (task.approved) {
-      // Return the full expected data structure even if already approved
-      return createSuccessResponse({
-        message: "Task already approved.",
+      return {
         projectId: proj.projectId,
         task: {
           id: task.id,
@@ -359,12 +332,13 @@ export class TaskManager {
           completedDetails: task.completedDetails,
           approved: task.approved,
         },
-      });
+      };
     }
 
     task.approved = true;
     await this.saveTasks();
-    return createSuccessResponse({
+
+    return {
       projectId: proj.projectId,
       task: {
         id: task.id,
@@ -373,179 +347,148 @@ export class TaskManager {
         completedDetails: task.completedDetails,
         approved: task.approved,
       },
-    });
+    };
   }
 
-  public async approveProjectCompletion(projectId: string): Promise<StandardResponse<ApproveProjectSuccessData>> {
+  public async approveProjectCompletion(projectId: string): Promise<ApproveProjectSuccessData> {
     await this.ensureInitialized();
-    // Reload before modifying
     await this.reloadFromDisk();
+
     const proj = this.data.projects.find((p) => p.projectId === projectId);
     if (!proj) {
-      throw createError(
-        ErrorCode.ProjectNotFound,
-        `Project ${projectId} not found`
-      );
+      throw new ProjectNotFoundError(projectId);
     }
 
-    // Check if project is already completed
     if (proj.completed) {
-      throw createError(
-        ErrorCode.ProjectAlreadyCompleted,
-        "Project is already completed"
-      );
+      throw new ProjectAlreadyCompletedError();
     }
 
-    // Check if all tasks are done and approved
     const allDone = proj.tasks.every((t) => t.status === "done");
     if (!allDone) {
-      throw createError(
-        ErrorCode.TasksNotAllDone,
-        "Not all tasks are done"
-      );
+      throw new TasksNotAllDoneError();
     }
+
     const allApproved = proj.tasks.every((t) => t.status === "done" && t.approved);
     if (!allApproved) {
-      throw createError(
-        ErrorCode.TasksNotAllApproved,
-        "Not all done tasks are approved"
-      );
+      throw new TasksNotAllApprovedError();
     }
 
     proj.completed = true;
     await this.saveTasks();
-    return createSuccessResponse({
+
+    return {
       projectId: proj.projectId,
       message: "Project is fully completed and approved.",
-    });
+    };
   }
 
-  public async openTaskDetails(taskId: string): Promise<StandardResponse<OpenTaskSuccessData>> {
+  public async openTaskDetails(taskId: string): Promise<OpenTaskSuccessData> {
     await this.ensureInitialized();
-    // Reload from disk to ensure we have the latest data
     await this.reloadFromDisk();
 
     for (const proj of this.data.projects) {
       const target = proj.tasks.find((t) => t.id === taskId);
       if (target) {
-        // Return only projectId and the full task object
-        return createSuccessResponse({
+        return {
           projectId: proj.projectId,
-          task: { ...target }, // Return all fields from the found task
-        });
+          task: { ...target },
+        };
       }
     }
-    throw createError(
-      ErrorCode.TaskNotFound,
-      `Task ${taskId} not found`
-    );
+    throw new TaskNotFoundError(taskId);
   }
 
-  public async listProjects(state?: TaskState): Promise<StandardResponse<ListProjectsSuccessData>> {
+  public async listProjects(state?: TaskState): Promise<ListProjectsSuccessData> {
     await this.ensureInitialized();
-    // Reload from disk to ensure we have the latest data
     await this.reloadFromDisk();
 
     let filteredProjects = [...this.data.projects];
 
     if (state && state !== "all") {
-      filteredProjects = filteredProjects.filter((proj) => {
+      filteredProjects = filteredProjects.filter((p) => {
         switch (state) {
           case "open":
-            return !proj.completed && proj.tasks.some((task) => task.status !== "done");
-          case "pending_approval":
-            return proj.tasks.some((task) => task.status === "done" && !task.approved);
+            return !p.completed;
           case "completed":
-            return proj.completed && proj.tasks.every((task) => task.status === "done" && task.approved);
+            return p.completed;
+          case "pending_approval":
+            return !p.completed && p.tasks.every((t) => t.status === "done");
           default:
-            return true; // Should not happen due to type safety
+            return true;
         }
       });
     }
 
-    return createSuccessResponse({
+    return {
       message: `Current projects in the system:`,
-      projects: filteredProjects.map((proj) => ({
-        projectId: proj.projectId,
-        initialPrompt: proj.initialPrompt,
-        totalTasks: proj.tasks.length,
-        completedTasks: proj.tasks.filter((task) => task.status === "done").length,
-        approvedTasks: proj.tasks.filter((task) => task.approved).length,
+      projects: filteredProjects.map((p) => ({
+        projectId: p.projectId,
+        initialPrompt: p.initialPrompt,
+        totalTasks: p.tasks.length,
+        completedTasks: p.tasks.filter((t) => t.status === "done").length,
+        approvedTasks: p.tasks.filter((t) => t.approved).length,
       })),
-    });
+    };
   }
 
-  public async listTasks(projectId?: string, state?: TaskState): Promise<StandardResponse<ListTasksSuccessData>> {
+  public async listTasks(projectId?: string, state?: TaskState): Promise<ListTasksSuccessData> {
     await this.ensureInitialized();
-    // Reload from disk to ensure we have the latest data
     await this.reloadFromDisk();
-    
-    // If projectId is provided, verify the project exists
+
+    let allTasks: Task[] = [];
+
     if (projectId) {
-      const project = this.data.projects.find((p) => p.projectId === projectId);
-      if (!project) {
-        throw createError(
-          ErrorCode.ProjectNotFound,
-          `Project ${projectId} not found`
-        );
+      const proj = this.data.projects.find((p) => p.projectId === projectId);
+      if (!proj) {
+        throw new ProjectNotFoundError(projectId);
       }
+      allTasks = [...proj.tasks];
+    } else {
+      // Collect tasks from all projects
+      allTasks = this.data.projects.flatMap((p) => p.tasks);
     }
 
-    // Flatten all tasks from all projects if no projectId is given
-    let tasks = projectId
-      ? this.data.projects.find((p) => p.projectId === projectId)?.tasks || []
-      : this.data.projects.flatMap((p) => p.tasks);
-
-    // Apply state filtering
     if (state && state !== "all") {
-      tasks = tasks.filter((task) => {
+      allTasks = allTasks.filter((task) => {
         switch (state) {
           case "open":
             return task.status !== "done";
-          case "pending_approval":
-            return task.status === "done" && !task.approved;
           case "completed":
             return task.status === "done" && task.approved;
+          case "pending_approval":
+            return task.status === "done" && !task.approved;
           default:
-            return true; // Should not happen due to type safety
+            return true;
         }
       });
     }
 
-    return createSuccessResponse({
-      message: `Tasks in the system${projectId ? ` for project ${projectId}` : ""}:\n${tasks.length} tasks found.`,
-      tasks: tasks.map(task => ({
-        id: task.id,
-        title: task.title,
-        description: task.description,
-        status: task.status,
-        approved: task.approved,
-        completedDetails: task.completedDetails,
-        toolRecommendations: task.toolRecommendations,
-        ruleRecommendations: task.ruleRecommendations
-      }))
-    });
+    return {
+      message: `Tasks in the system${projectId ? ` for project ${projectId}` : ""}:\n${allTasks.length} tasks found.`,
+      tasks: allTasks,
+    };
   }
 
   public async addTasksToProject(
     projectId: string,
     tasks: { title: string; description: string; toolRecommendations?: string; ruleRecommendations?: string }[]
-  ): Promise<StandardResponse<AddTasksSuccessData>> {
+  ): Promise<AddTasksSuccessData> {
     await this.ensureInitialized();
-    // Reload before modifying
     await this.reloadFromDisk();
+
     const proj = this.data.projects.find((p) => p.projectId === projectId);
     if (!proj) {
-      throw createError(
-        ErrorCode.ProjectNotFound,
-        `Project ${projectId} not found`
-      );
+      throw new ProjectNotFoundError(projectId);
+    }
+
+    if (proj.completed) {
+      throw new ProjectAlreadyCompletedError();
     }
 
     const newTasks: Task[] = [];
     for (const taskDef of tasks) {
       this.taskCounter += 1;
-      newTasks.push({
+      const newTask: Task = {
         id: `task-${this.taskCounter}`,
         title: taskDef.title,
         description: taskDef.description,
@@ -554,20 +497,21 @@ export class TaskManager {
         completedDetails: "",
         toolRecommendations: taskDef.toolRecommendations,
         ruleRecommendations: taskDef.ruleRecommendations,
-      });
+      };
+      newTasks.push(newTask);
+      proj.tasks.push(newTask);
     }
 
-    proj.tasks.push(...newTasks);
     await this.saveTasks();
 
-    return createSuccessResponse({
-      message: `Added ${newTasks.length} new tasks to project ${projectId}.`,
+    return {
       newTasks: newTasks.map((t) => ({
         id: t.id,
         title: t.title,
         description: t.description,
       })),
-    });
+      message: `Added ${newTasks.length} tasks to project ${projectId}`,
+    };
   }
 
   public async updateTask(
@@ -581,90 +525,72 @@ export class TaskManager {
       status?: "not started" | "in progress" | "done";
       completedDetails?: string;
     }
-  ): Promise<StandardResponse<Task>> {
+  ): Promise<Task> {
     await this.ensureInitialized();
-    // Reload before modifying
     await this.reloadFromDisk();
-    const project = this.data.projects.find((p) => p.projectId === projectId);
-    if (!project) {
-      throw createError(
-        ErrorCode.ProjectNotFound,
-        `Project ${projectId} not found`
-      );
-    }
 
-    const taskIndex = project.tasks.findIndex((t) => t.id === taskId);
-    if (taskIndex === -1) {
-      throw createError(
-        ErrorCode.TaskNotFound,
-        `Task ${taskId} not found`
-      );
-    }
-
-    // Update the task with the provided updates
-    project.tasks[taskIndex] = { ...project.tasks[taskIndex], ...updates };
-
-    // Check if status was updated to 'done' and if project has autoApprove enabled
-    if (updates.status === 'done' && project.autoApprove) {
-      project.tasks[taskIndex].approved = true;
-    }
-
-    await this.saveTasks();
-    return createSuccessResponse(project.tasks[taskIndex]);
-  }
-
-  public async deleteTask(projectId: string, taskId: string): Promise<StandardResponse<DeleteTaskSuccessData>> {
-    await this.ensureInitialized();
-    // Reload before modifying
-    await this.reloadFromDisk();
     const proj = this.data.projects.find((p) => p.projectId === projectId);
     if (!proj) {
-      throw createError(
-        ErrorCode.ProjectNotFound,
-        `Project ${projectId} not found`
-      );
+      throw new ProjectNotFoundError(projectId);
+    }
+
+    if (proj.completed) {
+      throw new ProjectAlreadyCompletedError();
+    }
+
+    const task = proj.tasks.find((t) => t.id === taskId);
+    if (!task) {
+      throw new TaskNotFoundError(taskId);
+    }
+
+    // Apply updates
+    Object.assign(task, updates);
+
+    await this.saveTasks();
+    return task;
+  }
+
+  public async deleteTask(projectId: string, taskId: string): Promise<DeleteTaskSuccessData> {
+    await this.ensureInitialized();
+    await this.reloadFromDisk();
+
+    const proj = this.data.projects.find((p) => p.projectId === projectId);
+    if (!proj) {
+      throw new ProjectNotFoundError(projectId);
+    }
+
+    if (proj.completed) {
+      throw new ProjectAlreadyCompletedError();
     }
 
     const taskIndex = proj.tasks.findIndex((t) => t.id === taskId);
     if (taskIndex === -1) {
-      throw createError(
-        ErrorCode.TaskNotFound,
-        `Task ${taskId} not found`
-      );
-    }
-    if (proj.tasks[taskIndex].status === "done") {
-      throw createError(
-        ErrorCode.CannotDeleteCompletedTask,
-        "Cannot delete completed task"
-      );
+      throw new TaskNotFoundError(taskId);
     }
 
-    proj.tasks.splice(taskIndex, 1);
+    const [deletedTask] = proj.tasks.splice(taskIndex, 1);
     await this.saveTasks();
 
-    return createSuccessResponse({
-      message: `Task ${taskId} has been deleted from project ${projectId}.`,
-    });
+    return {
+      message: `Task ${taskId} deleted from project ${projectId}`,
+    };
   }
 
-  public async readProject(projectId: string): Promise<StandardResponse<ReadProjectSuccessData>> {
+  public async readProject(projectId: string): Promise<ReadProjectSuccessData> {
     await this.ensureInitialized();
-    // Reload from disk to ensure we have the latest data
     await this.reloadFromDisk();
-    
-    const project = this.data.projects.find(p => p.projectId === projectId);
+
+    const project = this.data.projects.find((p) => p.projectId === projectId);
     if (!project) {
-      throw createError(
-        ErrorCode.ProjectNotFound,
-        `Project ${projectId} not found`
-      );
+      throw new ProjectNotFoundError(projectId);
     }
-    return createSuccessResponse({
+
+    return {
       projectId: project.projectId,
       initialPrompt: project.initialPrompt,
       projectPlan: project.projectPlan,
       completed: project.completed,
-      tasks: project.tasks
-    });
+      tasks: project.tasks,
+    };
   }
 } 

@@ -1,7 +1,6 @@
 import { Tool } from "@modelcontextprotocol/sdk/types.js";
 import { TaskManager } from "./TaskManager.js";
-import { ErrorCode } from "../types/index.js";
-import { createError, normalizeError } from "../utils/errors.js";
+import { normalizeError } from "../utils/errors.js";
 import { toolExecutorMap } from "./toolExecutors.js";
 
 // ---------------------- PROJECT TOOLS ----------------------
@@ -443,35 +442,51 @@ export const ALL_TOOLS: Tool[] = [
 ];
 
 /**
- * Executes a tool with error handling and standardized response formatting.
- * Uses the toolExecutorMap to look up and execute the appropriate tool executor.
- * 
- * @param toolName The name of the tool to execute
- * @param args The arguments to pass to the tool
- * @param taskManager The TaskManager instance to use
- * @returns A promise that resolves to the tool's response
- * @throws {Error} If the tool is not found or if execution fails
+ * Finds and executes a tool, handling error classification.
+ * - Throws errors tagged with `jsonRpcCode` for protocol issues (e.g., Not Found, Invalid Params).
+ * - Catches other errors (tool execution failures) and returns the standard MCP error result format.
  */
-export async function executeToolWithErrorHandling(
+export async function executeToolAndHandleErrors(
   toolName: string,
   args: Record<string, unknown>,
   taskManager: TaskManager
 ): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
-  try {
-    const executor = toolExecutorMap.get(toolName);
-    if (!executor) {
-      throw createError(
-        ErrorCode.InvalidArgument,
-        `Unknown tool: ${toolName}`
-      );
-    }
+  const executor = toolExecutorMap.get(toolName);
 
-    return await executor.execute(taskManager, args);
-  } catch (error) {
-    const standardError = normalizeError(error);
+  // 1. Handle "Tool Not Found" - This is a Protocol Error (-32601 Method not found)
+  if (!executor) {
+    const error = new Error(`Unknown tool: ${toolName}`);
+    (error as any).jsonRpcCode = -32601; // Tag as protocol error
+    throw error; // Throw for SDK to handle
+  }
+
+  try {
+    // 2. Execute the tool - Validation errors (protocol) or TaskManager errors (execution) might be thrown
+    const resultData = await executor.execute(taskManager, args);
+
+    // 3. Format successful execution result
     return {
-      content: [{ type: "text", text: `Error: ${standardError.message}` }],
-      isError: true,
+      content: [{ type: "text", text: JSON.stringify(resultData, null, 2) }]
     };
+
+  } catch (error: unknown) {
+    // 4. Handle ALL errors thrown during execution
+    const potentialProtocolError = error as any;
+
+    if (potentialProtocolError?.jsonRpcCode) {
+      // 4a. If it's tagged as a protocol error (e.g., from validation), re-throw it.
+      // The MCP SDK Server will catch this and format the top-level JSON-RPC error.
+      throw potentialProtocolError;
+    } else {
+      // 4b. Otherwise, it's a Tool Execution Error.
+      console.error(`Tool Execution Error [${toolName}]:`, error); // Log the original error for debugging
+      const normalized = normalizeError(error); // Get standardized message/details
+
+      // Format and RETURN the error within the 'result' field structure.
+      return {
+        content: [{ type: "text", text: `Tool execution failed: ${normalized.message}` }],
+        isError: true // Mark as an execution error as per MCP spec
+      };
+    }
   }
 }

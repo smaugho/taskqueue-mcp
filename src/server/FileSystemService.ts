@@ -2,7 +2,34 @@ import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { dirname, join, resolve } from "node:path";
 import { homedir } from "node:os";
 import { TaskManagerFile, ErrorCode } from "../types/index.js";
-import { createError } from "../utils/errors.js";
+
+// Custom error classes for FileSystemService
+export class ReadOnlyFileSystemError extends Error {
+  constructor(originalError?: unknown) {
+    super('Cannot save tasks: read-only file system');
+    this.name = 'ReadOnlyFileSystemError';
+    (this as any).code = ErrorCode.ReadOnlyFileSystem;
+    (this as any).originalError = originalError;
+  }
+}
+
+export class FileWriteError extends Error {
+  constructor(message: string, originalError?: unknown) {
+    super(message);
+    this.name = 'FileWriteError';
+    (this as any).code = ErrorCode.FileWriteError;
+    (this as any).originalError = originalError;
+  }
+}
+
+export class FileReadError extends Error {
+  constructor(message: string, originalError?: unknown) {
+    super(message);
+    this.name = 'FileReadError';
+    (this as any).code = ErrorCode.FileReadError;
+    (this as any).originalError = originalError;
+  }
+}
 
 export interface InitializedTaskData {
   data: TaskManagerFile;
@@ -162,17 +189,9 @@ export class FileSystemService {
         );
       } catch (error) {
         if (error instanceof Error && error.message.includes("EROFS")) {
-          throw createError(
-            ErrorCode.ReadOnlyFileSystem,
-            "Cannot save tasks: read-only file system",
-            { originalError: error }
-          );
+          throw new ReadOnlyFileSystemError(error);
         }
-        throw createError(
-          ErrorCode.FileWriteError,
-          "Failed to save tasks file",
-          { originalError: error }
-        );
+        throw new FileWriteError("Failed to save tasks file", error);
       }
     });
   }
@@ -181,7 +200,7 @@ export class FileSystemService {
    * Reads an attachment file from the current working directory
    * @param filename The name of the file to read (relative to cwd)
    * @returns The contents of the file as a string
-   * @throws {StandardError} If the file cannot be read
+   * @throws {FileReadError} If the file cannot be read
    */
   public async readAttachmentFile(filename: string): Promise<string> {
     try {
@@ -189,17 +208,9 @@ export class FileSystemService {
       return await readFile(filePath, 'utf-8');
     } catch (error) {
       if (error instanceof Error && error.message.includes('ENOENT')) {
-        throw createError(
-          ErrorCode.FileReadError,
-          `Attachment file not found: ${filename}`,
-          { originalError: error }
-        );
+        throw new FileReadError(`Attachment file not found: ${filename}`, error);
       }
-      throw createError(
-        ErrorCode.FileReadError,
-        `Failed to read attachment file: ${filename}`,
-        { originalError: error }
-      );
+      throw new FileReadError(`Failed to read attachment file: ${filename}`, error);
     }
   }
 } 

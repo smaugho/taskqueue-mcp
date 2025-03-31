@@ -3,7 +3,7 @@
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { TaskManager } from "./src/server/TaskManager.js";
-import { ALL_TOOLS, executeToolWithErrorHandling } from "./src/server/tools.js";
+import { ALL_TOOLS, executeToolAndHandleErrors } from "./src/server/tools.js";
 import { ListToolsRequestSchema, CallToolRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 
 // Create server with capabilities BEFORE setting up handlers
@@ -39,11 +39,16 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
 });
 
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
-  return executeToolWithErrorHandling(
+  // Directly call the handler. It either returns a result object (success or isError:true)
+  // OR it throws a tagged protocol error.
+  return await executeToolAndHandleErrors(
     request.params.name,
     request.params.arguments || {},
     taskManager
   );
+  // SDK automatically handles:
+  // - Wrapping the returned value (success data or isError:true object) in `result: { ... }`
+  // - Catching re-thrown protocol errors and formatting the top-level `error: { ... }`
 });
 
 // Start the server

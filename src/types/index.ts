@@ -32,16 +32,7 @@ export const VALID_STATUS_TRANSITIONS = {
 
 export type TaskState = "open" | "pending_approval" | "completed" | "all";
 
-// Error Types
-export enum ErrorCategory {
-  Validation = 'VALIDATION',
-  ResourceNotFound = 'RESOURCE_NOT_FOUND',
-  StateTransition = 'STATE_TRANSITION',
-  FileSystem = 'FILE_SYSTEM',
-  TestAssertion = 'TEST_ASSERTION',
-  Unknown = 'UNKNOWN'
-}
-
+// Error Codes (kept for internal use and logging)
 export enum ErrorCode {
   // Validation Errors (1000-1999)
   MissingParameter = 'ERR_1000',
@@ -75,14 +66,6 @@ export enum ErrorCode {
   Unknown = 'ERR_9999'
 }
 
-export interface StandardError {
-  status: "error";
-  code: ErrorCode;
-  category: ErrorCategory;
-  message: string;
-  details?: unknown;
-}
-
 // Define the structure for createProject success data
 export interface ProjectCreationSuccessData {
   projectId: string;
@@ -91,7 +74,7 @@ export interface ProjectCreationSuccessData {
   message: string;
 }
 
-// --- NEW Success Data Interfaces ---
+// --- Success Data Interfaces ---
 
 export interface ApproveTaskSuccessData {
   projectId: string;
@@ -146,36 +129,3 @@ export interface ReadProjectSuccessData {
   completed: boolean;
   tasks: Task[];
 }
-
-// --- End NEW Success Data Interfaces ---
-
-// Generic success response
-export interface SuccessResponse<T = unknown> {
-  status: "success";
-  data: T;
-  message?: string;
-}
-
-// Error response
-export interface ErrorResponse {
-  status: "error";
-  error: {
-    code: ErrorCode;
-    message: string;
-    details?: unknown;
-  };
-}
-
-// All tasks done response
-export interface AllTasksDoneResponse {
-  status: "all_tasks_done";
-  data: {
-    message: string;
-  };
-}
-
-// Combined union type for all response types
-export type StandardResponse<T = unknown> = 
-  | SuccessResponse<T>
-  | ErrorResponse
-  | AllTasksDoneResponse;
