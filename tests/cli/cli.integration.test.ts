@@ -168,10 +168,6 @@ describe("CLI Integration Tests", () => {
         `TASK_MANAGER_FILE_PATH=${tasksFilePath} tsx ${CLI_PATH} generate-plan --prompt "Create app" --attachment nonexistent.txt`
       ).catch(error => ({ stdout: error.stdout, stderr: error.stderr }));
 
-      // Keep these console logs temporarily if helpful for debugging during development
-      // console.log("Test stdout:", stdout); 
-      // console.log("Test stderr:", stderr);
-
       // Updated assertion to match the formatCliError output
       expect(stderr).toContain("[ERR_4000] Failed to read attachment file: nonexistent.txt");
       expect(stderr).toContain("-> Details: Attachment file not found: nonexistent.txt");

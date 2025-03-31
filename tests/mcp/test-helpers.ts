@@ -1,5 +1,6 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { Task, Project, TaskManagerFile } from "../../src/types/index.js";
 import * as path from 'node:path';
 import * as os from 'node:os';
@@ -10,17 +11,12 @@ import dotenv from 'dotenv';
 // Load environment variables from .env file
 dotenv.config();
 
-// MCP Response Types
-export interface ToolResponse {
-  isError: boolean;
-  content: Array<{ type: string; text: string }>;
-}
-
 export interface TestContext {
   client: Client;
   transport: StdioClientTransport;
   tempDir: string;
   testFilePath: string;
+  taskCounter: number;
 }
 
 /**
@@ -35,14 +31,10 @@ export async function setupTestContext(): Promise<TestContext> {
   // Initialize empty task manager file
   await writeTaskManagerFile(testFilePath, { projects: [] });
 
-  console.log('Setting up test with:');
-  console.log('- Temp directory:', tempDir);
-  console.log('- Test file path:', testFilePath);
-
   // Set up the transport with environment variable for test file
   const transport = new StdioClientTransport({
     command: process.execPath,  // Use full path to current Node.js executable
-    args: ["dist/index.js"],
+    args: ["dist/src/server/index.js"],
     env: {
       TASK_MANAGER_FILE_PATH: testFilePath,
       NODE_ENV: "test",
@@ -52,8 +44,6 @@ export async function setupTestContext(): Promise<TestContext> {
       GEMINI_API_KEY: process.env.GEMINI_API_KEY ?? ''
     }
   });
-
-  console.log('Created transport with command:', process.execPath, 'dist/index.js');
 
   // Set up the client
   const client = new Client(
@@ -72,7 +62,6 @@ export async function setupTestContext(): Promise<TestContext> {
   );
 
   try {
-    console.log('Attempting to connect to server...');
     // Connect to the server with a timeout
     const connectPromise = client.connect(transport);
     const timeoutPromise = new Promise((_, reject) => {
@@ -80,16 +69,14 @@ export async function setupTestContext(): Promise<TestContext> {
     });
 
     await Promise.race([connectPromise, timeoutPromise]);
-    console.log('Successfully connected to server');
 
     // Small delay to ensure server is ready
     await new Promise(resolve => setTimeout(resolve, 1000));
   } catch (error) {
-    console.error('Failed to connect to server:', error);
     throw error;
   }
 
-  return { client, transport, tempDir, testFilePath };
+  return { client, transport, tempDir, testFilePath, taskCounter: 0 };
 }
 
 /**
@@ -97,11 +84,9 @@ export async function setupTestContext(): Promise<TestContext> {
  */
 export async function teardownTestContext(context: TestContext) {
   try {
-    console.log('Cleaning up...');
     // Ensure transport is properly closed
     if (context.transport) {
       context.transport.close();
-      console.log('Transport closed');
     }
   } catch (err) {
     console.error('Error closing transport:', err);
@@ -110,7 +95,6 @@ export async function teardownTestContext(context: TestContext) {
   // Clean up temp files
   try {
     await fs.rm(context.tempDir, { recursive: true, force: true });
-    console.log('Temp directory cleaned up');
   } catch (err) {
     console.error('Error cleaning up temp directory:', err);
   }
@@ -119,7 +103,7 @@ export async function teardownTestContext(context: TestContext) {
 /**
  * Verifies that a tool response matches the MCP spec format
  */
-export function verifyToolResponse(response: ToolResponse) {
+export function verifyCallToolResult(response: CallToolResult) {
   expect(response).toBeDefined();
   expect(response).toHaveProperty('content');
   expect(Array.isArray(response.content)).toBe(true);
@@ -149,6 +133,28 @@ export function verifyProtocolError(error: any, expectedCode: number, expectedMe
 }
 
 /**
+ * Verifies that a tool execution error matches the expected format
+ */
+export function verifyToolExecutionError(response: CallToolResult, expectedMessagePattern: string | RegExp) {
+  verifyCallToolResult(response);  // Verify basic CallToolResult format
+  expect(response.isError).toBe(true);
+  const errorMessage = response.content[0]?.text;
+  expect(typeof errorMessage).toBe('string');
+  expect(errorMessage).toMatch(expectedMessagePattern);
+}
+
+/**
+ * Verifies that a successful tool response contains valid JSON data
+ */
+export function verifyToolSuccessResponse<T = unknown>(response: CallToolResult): { data: T } {
+  verifyCallToolResult(response);
+  expect(response.isError).toBeFalsy();
+  const jsonText = response.content[0]?.text;
+  expect(typeof jsonText).toBe('string');
+  return JSON.parse(jsonText as string);
+}
+
+/**
  * Creates a test project and returns its ID
  */
 export async function createTestProject(client: Client, options: {
@@ -165,9 +171,9 @@ export async function createTestProject(client: Client, options: {
       ],
       autoApprove: options.autoApprove
     }
-  }) as ToolResponse;
+  }) as CallToolResult;
 
-  verifyToolResponse(createResult);
+  verifyCallToolResult(createResult);
   expect(createResult.isError).toBeFalsy();
   
   const responseData = JSON.parse((createResult.content[0] as { text: string }).text);
@@ -181,9 +187,9 @@ export async function getFirstTaskId(client: Client, projectId: string): Promise
   const nextTaskResult = await client.callTool({
     name: "get_next_task",
     arguments: { projectId }
-  }) as ToolResponse;
+  }) as CallToolResult;
 
-  verifyToolResponse(nextTaskResult);
+  verifyCallToolResult(nextTaskResult);
   expect(nextTaskResult.isError).toBeFalsy();
   
   const nextTask = JSON.parse((nextTaskResult.content[0] as { text: string }).text);
@@ -269,8 +275,14 @@ export async function createTestTaskInFile(filePath: string, projectId: string, 
     throw new Error(`Project ${projectId} not found`);
   }
 
+  // Find the highest task ID number in the file to ensure unique IDs
+  const maxTaskId = data.projects
+    .flatMap(p => p.tasks)
+    .map(t => parseInt(t.id.replace('task-', '')))
+    .reduce((max, curr) => Math.max(max, curr), 0);
+
   const newTask: Task = {
-    id: `task-${Date.now()}`,
+    id: `task-${maxTaskId + 1}`,  // Use incrementing number instead of timestamp
     title: "Test Task",
     description: "Test Description",
     status: "not started",

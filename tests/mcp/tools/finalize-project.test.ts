@@ -2,15 +2,14 @@ import { describe, it, expect, beforeAll, afterAll } from '@jest/globals';
 import {
   setupTestContext,
   teardownTestContext,
-  verifyToolResponse,
+  verifyCallToolResult,
   createTestProjectInFile,
   createTestTaskInFile,
   verifyProjectInFile,
-  TestContext,
-  ToolResponse
+  TestContext
 } from '../test-helpers.js';
 import { McpError } from '@modelcontextprotocol/sdk/types.js';
-
+import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 describe('finalize_project Tool', () => {
   let context: TestContext;
 
@@ -54,10 +53,10 @@ describe('finalize_project Tool', () => {
         arguments: {
           projectId: project.projectId
         }
-      }) as ToolResponse;
+      }) as CallToolResult;
 
       // Verify response
-      verifyToolResponse(result);
+      verifyCallToolResult(result);
       expect(result.isError).toBeFalsy();
       
       // Verify project state in file
@@ -97,9 +96,9 @@ describe('finalize_project Tool', () => {
         arguments: {
           projectId: project.projectId
         }
-      }) as ToolResponse;
+      }) as CallToolResult;
 
-      verifyToolResponse(result);
+      verifyCallToolResult(result);
       expect(result.isError).toBeFalsy();
       
       await verifyProjectInFile(context.testFilePath, project.projectId, {
@@ -136,9 +135,9 @@ describe('finalize_project Tool', () => {
         arguments: {
           projectId: project.projectId
         }
-      }) as ToolResponse;
+      }) as CallToolResult;
 
-      verifyToolResponse(result);
+      verifyCallToolResult(result);
       expect(result.isError).toBe(true);
       expect(result.content[0].text).toContain('Error: Cannot finalize project: not all tasks are completed');
       
@@ -176,9 +175,9 @@ describe('finalize_project Tool', () => {
         arguments: {
           projectId: project.projectId
         }
-      }) as ToolResponse;
+      }) as CallToolResult;
 
-      verifyToolResponse(result);
+      verifyCallToolResult(result);
       expect(result.isError).toBe(true);
       expect(result.content[0].text).toContain('Error: Cannot finalize project: not all tasks are approved');
       
@@ -207,9 +206,9 @@ describe('finalize_project Tool', () => {
         arguments: {
           projectId: project.projectId
         }
-      }) as ToolResponse;
+      }) as CallToolResult;
 
-      verifyToolResponse(result);
+      verifyCallToolResult(result);
       expect(result.isError).toBe(true);
       expect(result.content[0].text).toContain('Error: Project is already completed');
     });

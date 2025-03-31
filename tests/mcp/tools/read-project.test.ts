@@ -2,12 +2,12 @@ import { describe, it, expect, beforeAll, afterAll } from '@jest/globals';
 import {
   setupTestContext,
   teardownTestContext,
-  verifyToolResponse,
+  verifyCallToolResult,
   createTestProjectInFile,
   createTestTaskInFile,
-  TestContext,
-  ToolResponse
+  TestContext
 } from '../test-helpers.js';
+import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 
 describe('read_project Tool', () => {
   let context: TestContext;
@@ -39,10 +39,10 @@ describe('read_project Tool', () => {
         arguments: {
           projectId: project.projectId
         }
-      }) as ToolResponse;
+      }) as CallToolResult;
 
       // Verify response
-      verifyToolResponse(result);
+      verifyCallToolResult(result);
       expect(result.isError).toBeFalsy();
 
       // Verify project data
@@ -82,9 +82,9 @@ describe('read_project Tool', () => {
         arguments: {
           projectId: project.projectId
         }
-      }) as ToolResponse;
+      }) as CallToolResult;
 
-      verifyToolResponse(result);
+      verifyCallToolResult(result);
       const responseData = JSON.parse((result.content[0] as { text: string }).text);
       expect(responseData.data).toMatchObject({
         projectId: project.projectId,
@@ -122,9 +122,9 @@ describe('read_project Tool', () => {
         arguments: {
           projectId: project.projectId
         }
-      }) as ToolResponse;
+      }) as CallToolResult;
 
-      verifyToolResponse(result);
+      verifyCallToolResult(result);
       const responseData = JSON.parse((result.content[0] as { text: string }).text);
       expect(responseData.data).toMatchObject({
         projectId: project.projectId,
@@ -167,9 +167,9 @@ describe('read_project Tool', () => {
         arguments: {
           projectId: project.projectId
         }
-      }) as ToolResponse;
+      }) as CallToolResult;
 
-      verifyToolResponse(result);
+      verifyCallToolResult(result);
       const responseData = JSON.parse((result.content[0] as { text: string }).text);
       expect(responseData.data.tasks).toHaveLength(3);
       expect(responseData.data.tasks.map((t: any) => t.status)).toEqual([
@@ -187,9 +187,9 @@ describe('read_project Tool', () => {
         arguments: {
           projectId: "non_existent_project"
         }
-      }) as ToolResponse;
+      }) as CallToolResult;
 
-      verifyToolResponse(result);
+      verifyCallToolResult(result);
       expect(result.isError).toBe(true);
       expect(result.content[0].text).toContain('Error: Project non_existent_project not found');
     });
@@ -200,9 +200,9 @@ describe('read_project Tool', () => {
         arguments: {
           projectId: "invalid-format"
         }
-      }) as ToolResponse;
+      }) as CallToolResult;
 
-      verifyToolResponse(result);
+      verifyCallToolResult(result);
       expect(result.isError).toBe(true);
       expect(result.content[0].text).toContain('Error: Invalid project ID format');
     });

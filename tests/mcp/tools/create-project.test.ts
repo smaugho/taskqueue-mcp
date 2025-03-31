@@ -2,13 +2,13 @@ import { describe, it, expect, beforeAll, afterAll } from '@jest/globals';
 import {
   setupTestContext,
   teardownTestContext,
-  verifyToolResponse,
+  verifyCallToolResult,
   verifyProjectInFile,
   verifyTaskInFile,
   readTaskManagerFile,
-  TestContext,
-  ToolResponse
+  TestContext
 } from '../test-helpers.js';
+import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 
 describe('create_project Tool', () => {
   let context: TestContext;
@@ -31,9 +31,9 @@ describe('create_project Tool', () => {
             { title: "Task 1", description: "First test task" }
           ]
         }
-      }) as ToolResponse;
+      }) as CallToolResult;
 
-      verifyToolResponse(result);
+      verifyCallToolResult(result);
       expect(result.isError).toBeFalsy();
 
       // Parse and verify response
@@ -67,9 +67,9 @@ describe('create_project Tool', () => {
             { title: "Task 3", description: "Third task" }
           ]
         }
-      }) as ToolResponse;
+      }) as CallToolResult;
 
-      verifyToolResponse(result);
+      verifyCallToolResult(result);
       const responseData = JSON.parse((result.content[0] as { text: string }).text);
       const projectId = responseData.data.projectId;
 
@@ -94,9 +94,9 @@ describe('create_project Tool', () => {
           ],
           autoApprove: true
         }
-      }) as ToolResponse;
+      }) as CallToolResult;
 
-      verifyToolResponse(result);
+      verifyCallToolResult(result);
       const responseData = JSON.parse((result.content[0] as { text: string }).text);
       const projectId = responseData.data.projectId;
 
@@ -116,9 +116,9 @@ describe('create_project Tool', () => {
             { title: "Planned Task", description: "Task with a plan" }
           ]
         }
-      }) as ToolResponse;
+      }) as CallToolResult;
 
-      verifyToolResponse(result);
+      verifyCallToolResult(result);
       const responseData = JSON.parse((result.content[0] as { text: string }).text);
       const projectId = responseData.data.projectId;
 
@@ -140,9 +140,9 @@ describe('create_project Tool', () => {
             ruleRecommendations: "Follow rules A and B"
           }]
         }
-      }) as ToolResponse;
+      }) as CallToolResult;
 
-      verifyToolResponse(result);
+      verifyCallToolResult(result);
       const responseData = JSON.parse((result.content[0] as { text: string }).text);
       const projectId = responseData.data.projectId;
       const taskId = responseData.data.tasks[0].id;
@@ -161,9 +161,9 @@ describe('create_project Tool', () => {
         arguments: {
           // Missing initialPrompt and tasks
         }
-      }) as ToolResponse;
+      }) as CallToolResult;
 
-      verifyToolResponse(result);
+      verifyCallToolResult(result);
       expect(result.isError).toBe(true);
       expect(result.content[0].text).toContain('Error: Missing required parameter');
     });
@@ -175,9 +175,9 @@ describe('create_project Tool', () => {
           initialPrompt: "Empty Project",
           tasks: []
         }
-      }) as ToolResponse;
+      }) as CallToolResult;
 
-      verifyToolResponse(result);
+      verifyCallToolResult(result);
       expect(result.isError).toBe(true);
       expect(result.content[0].text).toContain('Error: Project must have at least one task');
     });
@@ -191,9 +191,9 @@ describe('create_project Tool', () => {
             { title: "Task 1" } // Missing required description
           ]
         }
-      }) as ToolResponse;
+      }) as CallToolResult;
 
-      verifyToolResponse(result);
+      verifyCallToolResult(result);
       expect(result.isError).toBe(true);
       expect(result.content[0].text).toContain('Error: Missing required task parameter: description');
     });
@@ -208,9 +208,9 @@ describe('create_project Tool', () => {
             { title: "Same Title", description: "Second task" }
           ]
         }
-      }) as ToolResponse;
+      }) as CallToolResult;
 
-      verifyToolResponse(result);
+      verifyCallToolResult(result);
       expect(result.isError).toBe(true);
       expect(result.content[0].text).toContain('Error: Duplicate task title');
     });

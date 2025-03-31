@@ -2,8 +2,8 @@
 
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
-import { TaskManager } from "./src/server/TaskManager.js";
-import { ALL_TOOLS, executeToolAndHandleErrors } from "./src/server/tools.js";
+import { TaskManager } from "./TaskManager.js";
+import { ALL_TOOLS, executeToolAndHandleErrors } from "./tools.js";
 import { ListToolsRequestSchema, CallToolRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 
 // Create server with capabilities BEFORE setting up handlers

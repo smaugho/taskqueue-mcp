@@ -2,13 +2,13 @@ import { describe, it, expect, beforeAll, afterAll } from '@jest/globals';
 import {
   setupTestContext,
   teardownTestContext,
-  verifyToolResponse,
+  verifyCallToolResult,
   createTestProjectInFile,
   createTestTaskInFile,
   verifyTaskInFile,
-  TestContext,
-  ToolResponse
+  TestContext
 } from '../test-helpers.js';
+import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 
 describe('approve_task Tool', () => {
   let context: TestContext;
@@ -40,10 +40,10 @@ describe('approve_task Tool', () => {
           projectId: project.projectId,
           taskId: task.id
         }
-      }) as ToolResponse;
+      }) as CallToolResult;
 
       // Verify response
-      verifyToolResponse(result);
+      verifyCallToolResult(result);
       expect(result.isError).toBeFalsy();
 
       // Verify task was approved in file
@@ -72,9 +72,9 @@ describe('approve_task Tool', () => {
           projectId: project.projectId,
           taskId: task.id
         }
-      }) as ToolResponse;
+      }) as CallToolResult;
 
-      verifyToolResponse(result);
+      verifyCallToolResult(result);
       expect(result.isError).toBeFalsy();
 
       // Verify task was auto-approved
@@ -111,9 +111,9 @@ describe('approve_task Tool', () => {
             projectId: project.projectId,
             taskId: task.id
           }
-        }) as ToolResponse;
+        }) as CallToolResult;
 
-        verifyToolResponse(result);
+        verifyCallToolResult(result);
         expect(result.isError).toBeFalsy();
 
         await verifyTaskInFile(context.testFilePath, project.projectId, task.id, {
@@ -131,9 +131,9 @@ describe('approve_task Tool', () => {
           projectId: "non_existent_project",
           taskId: "task-1"
         }
-      }) as ToolResponse;
+      }) as CallToolResult;
 
-      verifyToolResponse(result);
+      verifyCallToolResult(result);
       expect(result.isError).toBe(true);
       expect(result.content[0].text).toContain('Error: Project non_existent_project not found');
     });
@@ -149,9 +149,9 @@ describe('approve_task Tool', () => {
           projectId: project.projectId,
           taskId: "non_existent_task"
         }
-      }) as ToolResponse;
+      }) as CallToolResult;
 
-      verifyToolResponse(result);
+      verifyCallToolResult(result);
       expect(result.isError).toBe(true);
       expect(result.content[0].text).toContain('Error: Task non_existent_task not found');
     });
@@ -171,9 +171,9 @@ describe('approve_task Tool', () => {
           projectId: project.projectId,
           taskId: task.id
         }
-      }) as ToolResponse;
+      }) as CallToolResult;
 
-      verifyToolResponse(result);
+      verifyCallToolResult(result);
       expect(result.isError).toBe(true);
       expect(result.content[0].text).toContain('Error: Cannot approve incomplete task');
     });
@@ -195,9 +195,9 @@ describe('approve_task Tool', () => {
           projectId: project.projectId,
           taskId: task.id
         }
-      }) as ToolResponse;
+      }) as CallToolResult;
 
-      verifyToolResponse(result);
+      verifyCallToolResult(result);
       expect(result.isError).toBe(true);
       expect(result.content[0].text).toContain('Error: Task is already approved');
     });

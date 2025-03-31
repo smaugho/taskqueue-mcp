@@ -2,12 +2,19 @@ import { describe, it, expect, beforeAll, afterAll } from '@jest/globals';
 import {
   setupTestContext,
   teardownTestContext,
-  verifyToolResponse,
+  verifyToolExecutionError,
+  verifyToolSuccessResponse,
   createTestProjectInFile,
   createTestTaskInFile,
-  TestContext,
-  ToolResponse
+  TestContext
 } from '../test-helpers.js';
+import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
+import { Task } from "../../../src/types/index.js";
+
+interface GetNextTaskResponse {
+  task: Task;
+  projectId: string;
+}
 
 describe('get_next_task Tool', () => {
   let context: TestContext;
@@ -45,14 +52,9 @@ describe('get_next_task Tool', () => {
         arguments: {
           projectId: project.projectId
         }
-      }) as ToolResponse;
+      }) as CallToolResult;
 
-      // Verify response
-      verifyToolResponse(result);
-      expect(result.isError).toBeFalsy();
-
-      // Verify task data
-      const responseData = JSON.parse((result.content[0] as { text: string }).text);
+      const responseData = verifyToolSuccessResponse<GetNextTaskResponse>(result);
       expect(responseData.data.task).toMatchObject({
         id: tasks[0].id,
         title: "Task 1",
@@ -84,10 +86,9 @@ describe('get_next_task Tool', () => {
         arguments: {
           projectId: project.projectId
         }
-      }) as ToolResponse;
+      }) as CallToolResult;
 
-      verifyToolResponse(result);
-      const responseData = JSON.parse((result.content[0] as { text: string }).text);
+      const responseData = verifyToolSuccessResponse<GetNextTaskResponse>(result);
       expect(responseData.data.task).toMatchObject({
         id: nextTask.id,
         title: "Next Task",
@@ -124,10 +125,9 @@ describe('get_next_task Tool', () => {
         arguments: {
           projectId: project.projectId
         }
-      }) as ToolResponse;
+      }) as CallToolResult;
 
-      verifyToolResponse(result);
-      const responseData = JSON.parse((result.content[0] as { text: string }).text);
+      const responseData = verifyToolSuccessResponse<GetNextTaskResponse>(result);
       expect(responseData.data.task).toMatchObject({
         id: inProgressTask.id,
         title: "Current Task",
@@ -135,7 +135,7 @@ describe('get_next_task Tool', () => {
       });
     });
 
-    it('should return null when all tasks are completed', async () => {
+    it('should return error when all tasks are completed', async () => {
       const project = await createTestProjectInFile(context.testFilePath, {
         initialPrompt: "Completed Project",
         completed: true
@@ -164,11 +164,9 @@ describe('get_next_task Tool', () => {
         arguments: {
           projectId: project.projectId
         }
-      }) as ToolResponse;
+      }) as CallToolResult;
 
-      verifyToolResponse(result);
-      const responseData = JSON.parse((result.content[0] as { text: string }).text);
-      expect(responseData.data.task).toBeNull();
+      verifyToolExecutionError(result, /Error: Project is already completed/);
     });
   });
 
@@ -179,11 +177,9 @@ describe('get_next_task Tool', () => {
         arguments: {
           projectId: "non_existent_project"
         }
-      }) as ToolResponse;
+      }) as CallToolResult;
 
-      verifyToolResponse(result);
-      expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain('Error: Project non_existent_project not found');
+      verifyToolExecutionError(result, /Error: Project non_existent_project not found/);
     });
 
     it('should return error for invalid project ID format', async () => {
@@ -192,11 +188,9 @@ describe('get_next_task Tool', () => {
         arguments: {
           projectId: "invalid-format"
         }
-      }) as ToolResponse;
+      }) as CallToolResult;
 
-      verifyToolResponse(result);
-      expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain('Error: Invalid project ID format');
+      verifyToolExecutionError(result, /Error: Invalid project ID format/);
     });
 
     it('should return error for project with no tasks', async () => {
@@ -210,11 +204,9 @@ describe('get_next_task Tool', () => {
         arguments: {
           projectId: project.projectId
         }
-      }) as ToolResponse;
+      }) as CallToolResult;
 
-      verifyToolResponse(result);
-      expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain('Error: Project has no tasks');
+      verifyToolExecutionError(result, /Error: Project has no tasks/);
     });
   });
 }); 

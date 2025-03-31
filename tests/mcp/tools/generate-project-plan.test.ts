@@ -2,10 +2,10 @@ import { describe, it, expect, beforeAll, afterAll } from '@jest/globals';
 import {
   setupTestContext,
   teardownTestContext,
-  verifyToolResponse,
-  TestContext,
-  ToolResponse
+  verifyCallToolResult,
+  TestContext
 } from '../test-helpers.js';
+import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import * as path from 'node:path';
 import * as fs from 'node:fs/promises';
 
@@ -26,7 +26,7 @@ describe('generate_project_plan Tool', () => {
       // Skip if no OpenAI API key is set
       const openaiApiKey = process.env.OPENAI_API_KEY;
       if (!openaiApiKey) {
-        console.log('Skipping test: OPENAI_API_KEY not set');
+        console.error('Skipping test: OPENAI_API_KEY not set');
         return;
       }
 
@@ -54,9 +54,9 @@ describe('generate_project_plan Tool', () => {
           model: "gpt-4-turbo",
           attachments: [requirementsPath]
         }
-      }) as ToolResponse;
+      }) as CallToolResult;
 
-      verifyToolResponse(result);
+      verifyCallToolResult(result);
       expect(result.isError).toBeFalsy();
 
       const planData = JSON.parse((result.content[0] as { text: string }).text);
@@ -86,9 +86,9 @@ describe('generate_project_plan Tool', () => {
           model: "gpt-4-turbo",
           // Invalid/missing API key should cause an error
         }
-      }) as ToolResponse;
+      }) as CallToolResult;
 
-      verifyToolResponse(result);
+      verifyCallToolResult(result);
       expect(result.isError).toBe(true);
       expect(result.content[0].text).toMatch(/Error: (Authentication|API key)/i);
     });
@@ -100,7 +100,7 @@ describe('generate_project_plan Tool', () => {
       // Skip if no Google API key is set
       const googleApiKey = process.env.GEMINI_API_KEY;
       if (!googleApiKey) {
-        console.log('Skipping test: GEMINI_API_KEY not set');
+        console.error('Skipping test: GEMINI_API_KEY not set');
         return;
       }
 
@@ -128,9 +128,9 @@ describe('generate_project_plan Tool', () => {
           model: "gemini-1.5-flash-latest",
           attachments: [requirementsPath]
         }
-      }) as ToolResponse;
+      }) as CallToolResult;
 
-      verifyToolResponse(result);
+      verifyCallToolResult(result);
       expect(result.isError).toBeFalsy();
 
       const planData = JSON.parse((result.content[0] as { text: string }).text);
@@ -160,9 +160,9 @@ describe('generate_project_plan Tool', () => {
           model: "gemini-1.5-flash-latest",
           // Invalid/missing API key should cause an error
         }
-      }) as ToolResponse;
+      }) as CallToolResult;
 
-      verifyToolResponse(result);
+      verifyCallToolResult(result);
       expect(result.isError).toBe(true);
       expect(result.content[0].text).toMatch(/Error: (Authentication|API key)/i);
     });
@@ -177,9 +177,9 @@ describe('generate_project_plan Tool', () => {
           provider: "invalid_provider",
           model: "some-model"
         }
-      }) as ToolResponse;
+      }) as CallToolResult;
 
-      verifyToolResponse(result);
+      verifyCallToolResult(result);
       expect(result.isError).toBe(true);
       expect(result.content[0].text).toContain('Error: Invalid provider');
     });
@@ -192,9 +192,9 @@ describe('generate_project_plan Tool', () => {
           provider: "openai",
           model: "invalid-model"
         }
-      }) as ToolResponse;
+      }) as CallToolResult;
 
-      verifyToolResponse(result);
+      verifyCallToolResult(result);
       expect(result.isError).toBe(true);
       expect(result.content[0].text).toMatch(/Error: (Invalid model|Model not found)/i);
     });
@@ -208,9 +208,9 @@ describe('generate_project_plan Tool', () => {
           model: "gpt-4-turbo",
           attachments: ["/non/existent/file.md"]
         }
-      }) as ToolResponse;
+      }) as CallToolResult;
 
-      verifyToolResponse(result);
+      verifyCallToolResult(result);
       expect(result.isError).toBe(true);
       expect(result.content[0].text).toMatch(/Error: (File not found|Cannot read file)/i);
     });

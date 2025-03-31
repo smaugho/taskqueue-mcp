@@ -286,16 +286,16 @@ export class TaskManager {
       throw new ProjectAlreadyCompletedError();
     }
 
-    const nextTask = proj.tasks.find((t) => t.status !== "done");
+    const nextTask = proj.tasks.find((t) => !(t.status === "done" && t.approved));
     if (!nextTask) {
-      // all tasks done?
-      const allDone = proj.tasks.every((t) => t.status === "done");
-      if (allDone && !proj.completed) {
+      // all tasks done and approved?
+      const allDoneAndApproved = proj.tasks.every((t) => t.status === "done" && t.approved);
+      if (allDoneAndApproved && !proj.completed) {
         return {
-          message: `All tasks have been completed. Awaiting project completion approval.`
+          message: `All tasks have been completed and approved. Awaiting project completion approval.`
         };
       }
-      throw new TaskNotFoundError("No undone tasks found");
+      throw new TaskNotFoundError("No incomplete or unapproved tasks found");
     }
 
     return {

@@ -2,13 +2,13 @@ import { describe, it, expect, beforeAll, afterAll } from '@jest/globals';
 import {
   setupTestContext,
   teardownTestContext,
-  verifyToolResponse,
+  verifyCallToolResult,
   createTestProjectInFile,
   createTestTaskInFile,
   verifyTaskInFile,
-  TestContext,
-  ToolResponse
+  TestContext
 } from '../test-helpers.js';
+import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 
 describe('update_task Tool', () => {
   let context: TestContext;
@@ -40,10 +40,10 @@ describe('update_task Tool', () => {
           taskId: task.id,
           status: "in progress"
         }
-      }) as ToolResponse;
+      }) as CallToolResult;
 
       // Verify response
-      verifyToolResponse(result);
+      verifyCallToolResult(result);
       expect(result.isError).toBeFalsy();
 
       // Verify file was updated
@@ -69,9 +69,9 @@ describe('update_task Tool', () => {
           status: "done",
           completedDetails: "Task completed in test"
         }
-      }) as ToolResponse;
+      }) as CallToolResult;
 
-      verifyToolResponse(result);
+      verifyCallToolResult(result);
       expect(result.isError).toBeFalsy();
 
       await verifyTaskInFile(context.testFilePath, project.projectId, task.id, {
@@ -97,9 +97,9 @@ describe('update_task Tool', () => {
           title: "Updated Title",
           description: "Updated Description"
         }
-      }) as ToolResponse;
+      }) as CallToolResult;
 
-      verifyToolResponse(result);
+      verifyCallToolResult(result);
       expect(result.isError).toBeFalsy();
 
       await verifyTaskInFile(context.testFilePath, project.projectId, task.id, {
@@ -125,9 +125,9 @@ describe('update_task Tool', () => {
           taskId: task.id,
           status: "invalid_status"  // Invalid status value
         }
-      }) as ToolResponse;
+      }) as CallToolResult;
 
-      verifyToolResponse(result);
+      verifyCallToolResult(result);
       expect(result.isError).toBe(true);
       expect(result.content[0].text).toContain('Error: Invalid status: must be one of');
     });
@@ -149,9 +149,9 @@ describe('update_task Tool', () => {
           status: "done"
           // Missing required completedDetails
         }
-      }) as ToolResponse;
+      }) as CallToolResult;
 
-      verifyToolResponse(result);
+      verifyCallToolResult(result);
       expect(result.isError).toBe(true);
       expect(result.content[0].text).toContain('Error: Missing or invalid required parameter: completedDetails');
     });
@@ -164,9 +164,9 @@ describe('update_task Tool', () => {
           taskId: "task-1",
           status: "in progress"
         }
-      }) as ToolResponse;
+      }) as CallToolResult;
 
-      verifyToolResponse(result);
+      verifyCallToolResult(result);
       expect(result.isError).toBe(true);
       expect(result.content[0].text).toContain('Error: Project non_existent_project not found');
     });
@@ -183,9 +183,9 @@ describe('update_task Tool', () => {
           taskId: "non_existent_task",
           status: "in progress"
         }
-      }) as ToolResponse;
+      }) as CallToolResult;
 
-      verifyToolResponse(result);
+      verifyCallToolResult(result);
       expect(result.isError).toBe(true);
       expect(result.content[0].text).toContain('Error: Task non_existent_task not found');
     });
@@ -208,9 +208,9 @@ describe('update_task Tool', () => {
           taskId: task.id,
           title: "New Title"
         }
-      }) as ToolResponse;
+      }) as CallToolResult;
 
-      verifyToolResponse(result);
+      verifyCallToolResult(result);
       expect(result.isError).toBe(true);
       expect(result.content[0].text).toContain('Error: Cannot modify approved task');
     });

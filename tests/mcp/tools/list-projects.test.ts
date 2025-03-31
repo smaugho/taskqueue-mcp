@@ -2,14 +2,13 @@ import { describe, it, expect, beforeAll, afterAll } from '@jest/globals';
 import {
   setupTestContext,
   teardownTestContext,
-  verifyToolResponse,
+  verifyCallToolResult,
   verifyProtocolError,
   createTestProject,
   getFirstTaskId,
-  TestContext,
-  ToolResponse
+  TestContext
 } from '../test-helpers.js';
-
+import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 describe('list_projects Tool', () => {
   let context: TestContext;
 
@@ -30,10 +29,10 @@ describe('list_projects Tool', () => {
       const result = await context.client.callTool({
         name: "list_projects",
         arguments: {}
-      }) as ToolResponse;
+      }) as CallToolResult;
 
       // Verify response format
-      verifyToolResponse(result);
+      verifyCallToolResult(result);
       expect(result.isError).toBeFalsy();
 
       // Parse and verify response data
@@ -79,9 +78,9 @@ describe('list_projects Tool', () => {
       const openResult = await context.client.callTool({
         name: "list_projects",
         arguments: { state: "open" }
-      }) as ToolResponse;
+      }) as CallToolResult;
 
-      verifyToolResponse(openResult);
+      verifyCallToolResult(openResult);
       const openData = JSON.parse((openResult.content[0] as { text: string }).text);
       const openProjects = openData.data.projects;
       expect(openProjects.some((p: any) => p.projectId === openProjectId)).toBe(true);
@@ -91,9 +90,9 @@ describe('list_projects Tool', () => {
       const completedResult = await context.client.callTool({
         name: "list_projects",
         arguments: { state: "completed" }
-      }) as ToolResponse;
+      }) as CallToolResult;
 
-      verifyToolResponse(completedResult);
+      verifyCallToolResult(completedResult);
       const completedData = JSON.parse((completedResult.content[0] as { text: string }).text);
       const completedProjects = completedData.data.projects;
       expect(completedProjects.some((p: any) => p.projectId === completedProjectId)).toBe(true);
@@ -125,9 +124,9 @@ describe('list_projects Tool', () => {
       const result = await context.client.callTool({
         name: "list_projects",
         arguments: {}
-      }) as ToolResponse;
+      }) as CallToolResult;
 
-      verifyToolResponse(result);
+      verifyCallToolResult(result);
       expect(result.isError).toBe(true);
       expect(result.content[0].text).toMatch(/Error: (ENOENT|Failed to read)/);
 
