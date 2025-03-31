@@ -39,8 +39,9 @@ describe('MCP Client Integration', () => {
         TASK_MANAGER_FILE_PATH: testFilePath,
         NODE_ENV: "test",
         DEBUG: "mcp:*",  // Enable MCP debug logging
-        // Pass the API key from the test runner's env to the child process env
-        OPENAI_API_KEY: process.env.OPENAI_API_KEY ?? ''
+        // Pass API keys from the test runner's env to the child process env
+        OPENAI_API_KEY: process.env.OPENAI_API_KEY ?? '',
+        GEMINI_API_KEY: process.env.GEMINI_API_KEY ?? ''
       }
     });
 
@@ -348,5 +349,64 @@ describe('MCP Client Integration', () => {
     
     // The temporary file will be cleaned up by the afterAll hook that removes tempDir
     console.log('Successfully generated project plan with tasks');
+  });
+
+  // Skip by default as it requires Google API key
+  it.skip('should generate a project plan using Google Gemini', async () => {
+    console.log('Testing project plan generation with Google Gemini...');
+    
+    // Skip if no Google API key is set
+    const googleApiKey = process.env.GEMINI_API_KEY;
+    if (!googleApiKey) {
+      console.log('Skipping test: GEMINI_API_KEY not set');
+      return;
+    }
+
+    // Create a temporary requirements file
+    const requirementsPath = path.join(tempDir, 'google-requirements.md');
+    const requirements = `# Project Plan Requirements (Google Test)
+
+- This is a test of whether we are correctly attaching files to our prompt for Google models
+- Return a JSON project plan with one task
+- Task title must be 'GeminiTask'
+- Task description must be 'GeminiDescription'
+- Project plan attribute should be 'GeminiPlan'`;
+
+    await fs.writeFile(requirementsPath, requirements, 'utf-8');
+
+    // Test prompt and context
+    const testPrompt = "Create a step-by-step project plan to develop a cloud-native microservice using Go";
+
+    // Generate project plan using Google Gemini
+    const generateResult = await client.callTool({
+      name: "generate_project_plan",
+      arguments: {
+        prompt: testPrompt,
+        provider: "google",
+        model: "gemini-1.5-flash-latest", // Using a generally available model, adjust if needed
+        attachments: [requirementsPath]
+      }
+    }) as ToolResponse;
+
+    expect(generateResult.isError).toBeFalsy();
+    const planData = JSON.parse((generateResult.content[0] as { text: string }).text);
+
+    // Verify the generated plan structure
+    expect(planData).toHaveProperty('data');
+    expect(planData.data).toHaveProperty('tasks');
+    expect(Array.isArray(planData.data.tasks)).toBe(true);
+    expect(planData.data.tasks.length).toBeGreaterThan(0);
+
+    // Verify task structure based on requirements file
+    const firstTask = planData.data.tasks[0];
+    expect(firstTask).toHaveProperty('title');
+    expect(firstTask).toHaveProperty('description');
+    
+    // Verify that the generated task adheres to the requirements file context
+    expect(firstTask.title).toBe('GeminiTask');
+    expect(firstTask.description).toBe('GeminiDescription');
+    
+    // The temporary file will be cleaned up by the afterAll hook that removes tempDir
+    console.log('Successfully generated project plan with Google Gemini');
   });
 });
