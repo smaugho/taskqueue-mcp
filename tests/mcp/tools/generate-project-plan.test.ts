@@ -98,9 +98,9 @@ describe('generate_project_plan Tool', () => {
     // Skip by default as it requires Google API key
     it.skip('should generate a project plan using Google Gemini', async () => {
       // Skip if no Google API key is set
-      const googleApiKey = process.env.GEMINI_API_KEY;
+      const googleApiKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY;
       if (!googleApiKey) {
-        console.error('Skipping test: GEMINI_API_KEY not set');
+        console.error('Skipping test: GOOGLE_GENERATIVE_AI_API_KEY not set');
         return;
       }
 

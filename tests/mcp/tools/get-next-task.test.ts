@@ -6,10 +6,11 @@ import {
   verifyToolSuccessResponse,
   createTestProjectInFile,
   createTestTaskInFile,
+  readTaskManagerFile,
   TestContext
 } from '../test-helpers.js';
 import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
-import { Task } from "../../../src/types/index.js";
+import { Task } from "../../../src/types/data.js";
 
 interface GetNextTaskResponse {
   task: Task;
@@ -33,18 +34,25 @@ describe('get_next_task Tool', () => {
       const project = await createTestProjectInFile(context.testFilePath, {
         initialPrompt: "Test Project"
       });
-      const tasks = await Promise.all([
-        createTestTaskInFile(context.testFilePath, project.projectId, {
-          title: "Task 1",
-          description: "First task",
-          status: "not started"
-        }),
-        createTestTaskInFile(context.testFilePath, project.projectId, {
-          title: "Task 2",
-          description: "Second task",
-          status: "not started"
-        })
-      ]);
+      
+      // Create tasks sequentially to ensure order
+      const task1 = await createTestTaskInFile(context.testFilePath, project.projectId, {
+        title: "Task 1",
+        description: "First task",
+        status: "not started"
+      });
+      const task2 = await createTestTaskInFile(context.testFilePath, project.projectId, {
+        title: "Task 2",
+        description: "Second task",
+        status: "not started"
+      });
+      const tasks = [task1, task2];
+
+      // Verify tasks are in expected order in the file
+      const fileData = await readTaskManagerFile(context.testFilePath);
+      const projectInFile = fileData.projects.find((p: { projectId: string }) => p.projectId === project.projectId);
+      expect(projectInFile?.tasks[0].title).toBe("Task 1");
+      expect(projectInFile?.tasks[1].title).toBe("Task 2");
 
       // Get next task
       const result = await context.client.callTool({
@@ -55,7 +63,7 @@ describe('get_next_task Tool', () => {
       }) as CallToolResult;
 
       const responseData = verifyToolSuccessResponse<GetNextTaskResponse>(result);
-      expect(responseData.data.task).toMatchObject({
+      expect(responseData.task).toMatchObject({
         id: tasks[0].id,
         title: "Task 1",
         status: "not started"
@@ -89,7 +97,7 @@ describe('get_next_task Tool', () => {
       }) as CallToolResult;
 
       const responseData = verifyToolSuccessResponse<GetNextTaskResponse>(result);
-      expect(responseData.data.task).toMatchObject({
+      expect(responseData.task).toMatchObject({
         id: nextTask.id,
         title: "Next Task",
         status: "not started"
@@ -128,7 +136,7 @@ describe('get_next_task Tool', () => {
       }) as CallToolResult;
 
       const responseData = verifyToolSuccessResponse<GetNextTaskResponse>(result);
-      expect(responseData.data.task).toMatchObject({
+      expect(responseData.task).toMatchObject({
         id: inProgressTask.id,
         title: "Current Task",
         status: "in progress"

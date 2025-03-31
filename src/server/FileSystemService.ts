@@ -1,35 +1,8 @@
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { dirname, join, resolve } from "node:path";
 import { homedir } from "node:os";
-import { TaskManagerFile, ErrorCode } from "../types/index.js";
-
-// Custom error classes for FileSystemService
-export class ReadOnlyFileSystemError extends Error {
-  constructor(originalError?: unknown) {
-    super('Cannot save tasks: read-only file system');
-    this.name = 'ReadOnlyFileSystemError';
-    (this as any).code = ErrorCode.ReadOnlyFileSystem;
-    (this as any).originalError = originalError;
-  }
-}
-
-export class FileWriteError extends Error {
-  constructor(message: string, originalError?: unknown) {
-    super(message);
-    this.name = 'FileWriteError';
-    (this as any).code = ErrorCode.FileWriteError;
-    (this as any).originalError = originalError;
-  }
-}
-
-export class FileReadError extends Error {
-  constructor(message: string, originalError?: unknown) {
-    super(message);
-    this.name = 'FileReadError';
-    (this as any).code = ErrorCode.FileReadError;
-    (this as any).originalError = originalError;
-  }
-}
+import { AppError, AppErrorCode } from "../types/errors.js";
+import { TaskManagerFile } from "../types/data.js";
 
 export interface InitializedTaskData {
   data: TaskManagerFile;
@@ -189,9 +162,9 @@ export class FileSystemService {
         );
       } catch (error) {
         if (error instanceof Error && error.message.includes("EROFS")) {
-          throw new ReadOnlyFileSystemError(error);
+          throw new AppError("Cannot save tasks: read-only file system", AppErrorCode.ReadOnlyFileSystem, error);
         }
-        throw new FileWriteError("Failed to save tasks file", error);
+        throw new AppError("Failed to save tasks file", AppErrorCode.FileWriteError, error);
       }
     });
   }
@@ -208,9 +181,9 @@ export class FileSystemService {
       return await readFile(filePath, 'utf-8');
     } catch (error) {
       if (error instanceof Error && error.message.includes('ENOENT')) {
-        throw new FileReadError(`Attachment file not found: ${filename}`, error);
+        throw new AppError(`Attachment file not found: ${filename}`, AppErrorCode.FileReadError, error);
       }
-      throw new FileReadError(`Failed to read attachment file: ${filename}`, error);
+      throw new AppError(`Failed to read attachment file: ${filename}`, AppErrorCode.FileReadError, error);
     }
   }
 } 

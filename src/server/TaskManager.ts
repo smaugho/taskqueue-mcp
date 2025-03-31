@@ -3,6 +3,9 @@ import {
   Task,
   TaskManagerFile,
   TaskState,
+  Project
+} from "../types/data.js";
+import {
   ProjectCreationSuccessData,
   ApproveTaskSuccessData,
   ApproveProjectSuccessData,
@@ -12,73 +15,14 @@ import {
   AddTasksSuccessData,
   DeleteTaskSuccessData,
   ReadProjectSuccessData,
-  Project
-} from "../types/index.js";
+} from "../types/response.js";
+import { AppError, AppErrorCode } from "../types/errors.js";
 import { FileSystemService } from "./FileSystemService.js";
 import { generateObject, jsonSchema } from "ai";
 
 // Default path follows platform-specific conventions
 const DEFAULT_PATH = path.join(FileSystemService.getAppDataDir(), "tasks.json");
 const TASK_FILE_PATH = process.env.TASK_MANAGER_FILE_PATH || DEFAULT_PATH;
-
-// Custom error classes for business logic errors
-export class ProjectNotFoundError extends Error {
-  constructor(projectId: string) {
-    super(`Project ${projectId} not found`);
-    this.name = 'ProjectNotFoundError';
-  }
-}
-
-export class TaskNotFoundError extends Error {
-  constructor(taskId: string) {
-    super(`Task ${taskId} not found`);
-    this.name = 'TaskNotFoundError';
-  }
-}
-
-export class ProjectAlreadyCompletedError extends Error {
-  constructor() {
-    super('Project is already completed');
-    this.name = 'ProjectAlreadyCompletedError';
-  }
-}
-
-export class TaskNotDoneError extends Error {
-  constructor() {
-    super('Task not done yet');
-    this.name = 'TaskNotDoneError';
-  }
-}
-
-export class TasksNotAllDoneError extends Error {
-  constructor() {
-    super('Not all tasks are done');
-    this.name = 'TasksNotAllDoneError';
-  }
-}
-
-export class TasksNotAllApprovedError extends Error {
-  constructor() {
-    super('Not all done tasks are approved');
-    this.name = 'TasksNotAllApprovedError';
-  }
-}
-
-export class FileReadError extends Error {
-  constructor(filename: string, originalError?: unknown) {
-    super(`Failed to read attachment file: ${filename}`);
-    this.name = 'FileReadError';
-    (this as any).originalError = originalError;
-  }
-}
-
-export class ConfigurationError extends Error {
-  constructor(message: string, originalError?: unknown) {
-    super(message);
-    this.name = 'ConfigurationError';
-    (this as any).originalError = originalError;
-  }
-}
 
 interface ProjectPlanOutput {
   projectPlan: string;
@@ -196,7 +140,7 @@ export class TaskManager {
         const content = await this.fileSystemService.readAttachmentFile(filename);
         attachmentContents.push(content);
       } catch (error) {
-        throw new FileReadError(filename, error);
+        throw new AppError(`Failed to read attachment file: ${filename}`, AppErrorCode.FileReadError, error);
       }
     }
 
@@ -245,7 +189,7 @@ export class TaskManager {
         modelProvider = deepseek(model);
         break;
       default:
-        throw new Error(`Invalid provider: ${provider}`);
+        throw new AppError(`Invalid provider: ${provider}`, AppErrorCode.InvalidArgument);
     }
 
     try {
@@ -258,19 +202,25 @@ export class TaskManager {
     } catch (err: any) {
       // Handle specific error cases
       if (err.name === 'LoadAPIKeyError' || err.message.includes('API key is missing')) {
-        throw new ConfigurationError(
+        throw new AppError(
           "Invalid or missing API key. Please check your environment variables.",
+          AppErrorCode.LLMConfigurationError,
           err
         );
       }
       if (err.message.includes('authentication') || err.message.includes('unauthorized')) {
-        throw new ConfigurationError(
+        throw new AppError(
           "Authentication failed with the LLM provider. Please check your credentials.",
+          AppErrorCode.LLMConfigurationError,
           err
         );
       }
       // For unknown errors, preserve the original error but wrap it
-      throw new Error("Failed to generate project plan due to an unexpected error", { cause: err });
+      throw new AppError(
+        "Failed to generate project plan due to an unexpected error",
+        AppErrorCode.LLMGenerationError,
+        err
+      );
     }
   }
 
@@ -280,10 +230,10 @@ export class TaskManager {
     
     const proj = this.data.projects.find((p) => p.projectId === projectId);
     if (!proj) {
-      throw new ProjectNotFoundError(projectId);
+      throw new AppError(`Project ${projectId} not found`, AppErrorCode.ProjectNotFound);
     }
     if (proj.completed) {
-      throw new ProjectAlreadyCompletedError();
+      throw new AppError('Project is already completed', AppErrorCode.ProjectAlreadyCompleted);
     }
 
     const nextTask = proj.tasks.find((t) => !(t.status === "done" && t.approved));
@@ -295,7 +245,7 @@ export class TaskManager {
           message: `All tasks have been completed and approved. Awaiting project completion approval.`
         };
       }
-      throw new TaskNotFoundError("No incomplete or unapproved tasks found");
+      throw new AppError('No incomplete or unapproved tasks found', AppErrorCode.TaskNotFound);
     }
 
     return {
@@ -310,29 +260,20 @@ export class TaskManager {
 
     const proj = this.data.projects.find((p) => p.projectId === projectId);
     if (!proj) {
-      throw new ProjectNotFoundError(projectId);
+      throw new AppError(`Project ${projectId} not found`, AppErrorCode.ProjectNotFound);
     }
 
     const task = proj.tasks.find((t) => t.id === taskId);
     if (!task) {
-      throw new TaskNotFoundError(taskId);
+      throw new AppError(`Task ${taskId} not found`, AppErrorCode.TaskNotFound);
     }
 
     if (task.status !== "done") {
-      throw new TaskNotDoneError();
+      throw new AppError('Task not done yet', AppErrorCode.TaskNotDone);
     }
 
     if (task.approved) {
-      return {
-        projectId: proj.projectId,
-        task: {
-          id: task.id,
-          title: task.title,
-          description: task.description,
-          completedDetails: task.completedDetails,
-          approved: task.approved,
-        },
-      };
+      throw new AppError('Task is already approved', AppErrorCode.TaskAlreadyApproved);
     }
 
     task.approved = true;
@@ -356,21 +297,21 @@ export class TaskManager {
 
     const proj = this.data.projects.find((p) => p.projectId === projectId);
     if (!proj) {
-      throw new ProjectNotFoundError(projectId);
+      throw new AppError(`Project ${projectId} not found`, AppErrorCode.ProjectNotFound);
     }
 
     if (proj.completed) {
-      throw new ProjectAlreadyCompletedError();
+      throw new AppError('Project is already completed', AppErrorCode.ProjectAlreadyCompleted);
     }
 
     const allDone = proj.tasks.every((t) => t.status === "done");
     if (!allDone) {
-      throw new TasksNotAllDoneError();
+      throw new AppError('Not all tasks are done', AppErrorCode.TasksNotAllDone);
     }
 
     const allApproved = proj.tasks.every((t) => t.status === "done" && t.approved);
     if (!allApproved) {
-      throw new TasksNotAllApprovedError();
+      throw new AppError('Not all done tasks are approved', AppErrorCode.TasksNotAllApproved);
     }
 
     proj.completed = true;
@@ -395,12 +336,16 @@ export class TaskManager {
         };
       }
     }
-    throw new TaskNotFoundError(taskId);
+    throw new AppError(`Task ${taskId} not found`, AppErrorCode.TaskNotFound);
   }
 
   public async listProjects(state?: TaskState): Promise<ListProjectsSuccessData> {
     await this.ensureInitialized();
     await this.reloadFromDisk();
+
+    if (state && !["all", "open", "completed", "pending_approval"].includes(state)) {
+      throw new AppError(`Invalid state filter: ${state}`, AppErrorCode.InvalidState);
+    }
 
     let filteredProjects = [...this.data.projects];
 
@@ -435,12 +380,16 @@ export class TaskManager {
     await this.ensureInitialized();
     await this.reloadFromDisk();
 
+    if (state && !["all", "open", "completed", "pending_approval"].includes(state)) {
+      throw new AppError(`Invalid state filter: ${state}`, AppErrorCode.InvalidState);
+    }
+
     let allTasks: Task[] = [];
 
     if (projectId) {
       const proj = this.data.projects.find((p) => p.projectId === projectId);
       if (!proj) {
-        throw new ProjectNotFoundError(projectId);
+        throw new AppError(`Project ${projectId} not found`, AppErrorCode.ProjectNotFound);
       }
       allTasks = [...proj.tasks];
     } else {
@@ -478,11 +427,11 @@ export class TaskManager {
 
     const proj = this.data.projects.find((p) => p.projectId === projectId);
     if (!proj) {
-      throw new ProjectNotFoundError(projectId);
+      throw new AppError(`Project ${projectId} not found`, AppErrorCode.ProjectNotFound);
     }
 
     if (proj.completed) {
-      throw new ProjectAlreadyCompletedError();
+      throw new AppError('Project is already completed', AppErrorCode.ProjectAlreadyCompleted);
     }
 
     const newTasks: Task[] = [];
@@ -531,16 +480,20 @@ export class TaskManager {
 
     const proj = this.data.projects.find((p) => p.projectId === projectId);
     if (!proj) {
-      throw new ProjectNotFoundError(projectId);
+      throw new AppError(`Project ${projectId} not found`, AppErrorCode.ProjectNotFound);
     }
 
     if (proj.completed) {
-      throw new ProjectAlreadyCompletedError();
+      throw new AppError('Project is already completed', AppErrorCode.ProjectAlreadyCompleted);
     }
 
     const task = proj.tasks.find((t) => t.id === taskId);
     if (!task) {
-      throw new TaskNotFoundError(taskId);
+      throw new AppError(`Task ${taskId} not found`, AppErrorCode.TaskNotFound);
+    }
+
+    if (task.approved) {
+      throw new AppError('Cannot modify an approved task', AppErrorCode.CannotModifyApprovedTask);
     }
 
     // Apply updates
@@ -556,19 +509,24 @@ export class TaskManager {
 
     const proj = this.data.projects.find((p) => p.projectId === projectId);
     if (!proj) {
-      throw new ProjectNotFoundError(projectId);
+      throw new AppError(`Project ${projectId} not found`, AppErrorCode.ProjectNotFound);
     }
 
     if (proj.completed) {
-      throw new ProjectAlreadyCompletedError();
+      throw new AppError('Project is already completed', AppErrorCode.ProjectAlreadyCompleted);
     }
 
     const taskIndex = proj.tasks.findIndex((t) => t.id === taskId);
     if (taskIndex === -1) {
-      throw new TaskNotFoundError(taskId);
+      throw new AppError(`Task ${taskId} not found`, AppErrorCode.TaskNotFound);
     }
 
-    const [deletedTask] = proj.tasks.splice(taskIndex, 1);
+    const task = proj.tasks[taskIndex];
+    if (task.approved) {
+      throw new AppError('Cannot delete an approved task', AppErrorCode.CannotModifyApprovedTask);
+    }
+
+    proj.tasks.splice(taskIndex, 1);
     await this.saveTasks();
 
     return {
@@ -582,7 +540,7 @@ export class TaskManager {
 
     const project = this.data.projects.find((p) => p.projectId === projectId);
     if (!project) {
-      throw new ProjectNotFoundError(projectId);
+      throw new AppError(`Project ${projectId} not found`, AppErrorCode.ProjectNotFound);
     }
 
     return {

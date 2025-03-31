@@ -9,85 +9,49 @@ alwaysApply: false
 graph TD
     subgraph Core_Logic
         FS[FileSystemService: e.g., FileReadError] --> TM[TaskManager: Throws App Errors, e.g., ProjectNotFound, TaskNotDone]
-        TM -->|Untagged App Error| CLI_Handler["cli.ts Command Handler"]
-        TM -->|Untagged App Error| ToolExec["toolExecutors.ts: execute"]
+        TM -->|App Error with code APP-xxxx| CLI_Handler["cli.ts Command Handler"]
+        TM -->|App Error with code APP-xxxx| ToolExec["toolExecutors.ts: execute"]
     end
 
     subgraph CLI_Path
-        CLI_Handler -->|Untagged App Error| CLI_Catch["cli.ts catch block"]
+        CLI_Handler -->|App Error| CLI_Catch["cli.ts catch block"]
         CLI_Catch -->|Error Object| FormatCLI["client errors.ts formatCliError"]
-        FormatCLI -->|Formatted String| ConsoleOut["console.error Output"]
+        FormatCLI -->|"Error [APP-xxxx]: message"| ConsoleOut["console.error Output"]
     end
 
     subgraph MCP_Server_Path
-        subgraph Validation
-            ToolExecVal["toolExecutors.ts Validation"] -->|Throws Tagged Protocol Error jsonRpcCode -32602| ExecToolErrHandler
+        subgraph Validation_Layer
+            ToolExecVal["toolExecutors.ts Validation"] -->|App Error, e.g., MissingParameter| ExecToolErrHandler
         end
         
-        subgraph Execution
-             ToolExec -->|Untagged App Error| ExecToolErrHandler["tools.ts executeToolAndHandleErrors catch block"]
+        subgraph App_Execution
+            ToolExec -->|App Error with code APP-xxxx| ExecToolErrHandler["tools.ts executeToolAndHandleErrors catch block"]
+            ExecToolErrHandler -->|Map AppError to Protocol Error or Tool Result| ErrorMapping
+            ErrorMapping -->|"If validation error (APP-1xxx)"| McpError["Create McpError with appropriate ErrorCode"]
+            ErrorMapping -->|"If business logic error (APP-2xxx+)"| FormatResult["Format as isError true result"]
+
+            McpError -->|Throw| SDKHandler["server index.ts SDK Handler"]
+            FormatResult -->|"{ content: [{ text: Error [APP-xxxx]: message }], isError: true }"| SDKHandler
         end
 
-        ExecToolErrHandler -->|Error Object| CheckTag["Check if error has jsonRpcCode"]
-        CheckTag -- Tagged Error --> ReThrow["Re-throw Tagged Error"]
-        CheckTag -- Untagged App Error --> NormalizeErr["utils errors.ts normalizeError"]
-        NormalizeErr -->|McpError Object code -32000| FormatResult["Format as isError true result"]
-        FormatResult -->|content list with isError true| SDKHandler["server index.ts SDK Handler"]
+        SDKHandler -- Protocol Error --> SDKFormatError["SDK Formats as JSON-RPC Error Response"]
+        SDKHandler -- Tool Result --> SDKFormatResult["SDK Formats as JSON-RPC Success Response"]
 
-        ReThrow -->|Tagged Protocol Error| SDKHandler
-        SDKHandler -- Tagged Error --> SDKFormatError["SDK Formats Top-Level Error"]
-        SDKHandler -- isError true Result --> SDKFormatResult["SDK Formats Result Field"]
-
-        SDKFormatError -->|JSON-RPC Error Response| MCPClient["MCP Client"]
-        SDKFormatResult -->|JSON-RPC Success Response with error details| MCPClient
+        SDKFormatError -->|"{ error: { code: -326xx, message: ... } }"| MCPClient["MCP Client"]
+        SDKFormatResult -->|"{ result: { content: [...], isError: true } }"| MCPClient
     end
 ```
 
-**Explanation of Error Flow and Transformations:**
+**Explanation of Updated Error Flow and Transformations:**
 
-Errors primarily originate from two places:
+Errors are consistently through a unified `AppError` system:
 
-1.  **Core Logic (`TaskManager`, `FileSystemService`):** These modules throw standard JavaScript `Error` objects, often subclassed (e.g., `ProjectNotFoundError`, `FileReadError`) but *without* any special MCP/JSON-RPC tagging (`jsonRpcCode`). These represent application-specific or file system problems.
-2.  **Tool Executors (`toolExecutors.ts`) Validation:** Before calling `TaskManager`, the executors validate input arguments. If validation fails, they create a *new* `Error` object and explicitly *tag* it with `jsonRpcCode = -32602` (Invalid Params).
+1. **Validation Errors** (`APP-1xxx` series)
+   - Used for validation issues (e.g., MissingParameter, InvalidArgument)
+   - Thrown by tool executors during parameter validation
+   - Mapped to protocol-level McpErrors in `executeToolAndHandleErrors`
 
-The handling differs significantly between the CLI and the MCP Server:
-
-**1. CLI Error Path (`cli.ts`)**
-
-1.  **Origination:** An untagged application error (e.g., `ProjectNotFoundError`) is thrown by `TaskManager`.
-2.  **Propagation:** The error propagates directly up the call stack to the `catch` block within the specific command's action handler in `cli.ts`.
-3.  **Transformation (`formatCliError`):**
-    *   The `catch` block calls `formatCliError` from `src/client/errors.ts`.
-    *   `formatCliError` takes the raw `Error` object.
-    *   It checks the error's `name` (e.g., 'ReadOnlyFileSystemError', 'FileReadError') to provide specific user-friendly messages for known file system issues.
-    *   For other errors, it checks if the error has a `.code` property (like the internal `ErrorCode` enum values, e.g., 'ERR_2000') and prepends it to the error message.
-    *   **Shape Change:** `Error` object -> Formatted `string` suitable for console output.
-4.  **Output:** The formatted string is printed to `console.error`.
-
-**2. MCP Server Error Path (`server/index.ts` via `tools.ts`)**
-
-1.  **Origination:**
-    *   **Validation Error:** A *tagged* protocol error (`jsonRpcCode = -32602`) is thrown by `toolExecutors.ts` validation.
-    *   **Execution Error:** An *untagged* application error (e.g., `TaskNotDone`) is thrown by `TaskManager`.
-2.  **Catching (`executeToolAndHandleErrors`):** Both types of errors are caught by the `try...catch` block in `executeToolAndHandleErrors` within `src/server/tools.ts`.
-3.  **Branching & Transformation:**
-    *   **If Tagged Protocol Error:** `executeToolAndHandleErrors` detects the `jsonRpcCode` property and *re-throws* the error unchanged.
-    *   **If Untagged App Error:**
-        *   `executeToolAndHandleErrors` calls `normalizeError` from `src/utils/errors.ts`.
-        *   `normalizeError` takes the raw `Error` object.
-        *   It converts the error into an `McpError` object, typically assigning the `code` to `-32000` (Server Error - a generic JSON-RPC code for implementation-defined errors). It preserves the original error message (stripping any internal `[ERR_CODE]` prefix) and potentially includes the stack trace in the `data` field for debugging.
-        *   **Shape Change:** Raw `Error` object -> Standardized `McpError` object (with JSON-RPC code).
-        *   `executeToolAndHandleErrors` then formats this `McpError` into the MCP `isError: true` structure: `{ content: [{ type: "text", text: "Tool execution failed: <normalized_message>" }], isError: true }`.
-        *   **Shape Change:** `McpError` object -> MCP Tool Result `object` with `isError: true`.
-4.  **SDK Handling (`@modelcontextprotocol/sdk Server`):** The MCP SDK `Server` instance (used in `server/index.ts`) handles the outcome from `executeToolAndHandleErrors`:
-    *   **If Error was Re-thrown (Tagged Protocol Error):** The SDK catches the *thrown* error. It automatically formats this into a standard JSON-RPC top-level error response (e.g., `{"jsonrpc": "2.0", "error": {"code": -32602, "message": "...", "data": ...}, "id": ...}`).
-    *   **If `isError: true` Object was Returned (Normalized App Error):** The SDK receives the *returned* object. It treats this as a *successful* tool execution from a protocol perspective, but one where the tool itself reported an error. It formats a standard JSON-RPC success response, placing the `isError: true` object inside the `result` field (e.g., `{"jsonrpc": "2.0", "result": {"content": [...], "isError": true}, "id": ...}`).
-5.  **Output:** The final JSON-RPC response (either an error response or a success response containing an `isError` result) is sent to the connected MCP Client.
-
-**Key Functions Changing Error Shapes:**
-
-1.  **`toolExecutors.ts` (Validation Logic):** Creates *new* `Error` objects and *tags* them with `jsonRpcCode`. (Raw Error -> Tagged Error)
-2.  **`normalizeError` (`src/utils/errors.ts`):** Standardizes various error inputs into `McpError` objects, often using the generic `-32000` code for application errors. (Raw Error -> McpError)
-3.  **`executeToolAndHandleErrors` (`src/server/tools.ts`):** Packages the `McpError` from `normalizeError` into the MCP-specific `{ content: [...], isError: true }` return format. (McpError -> MCP Result Object)
-4.  **`formatCliError` (`src/client/errors.ts`):** Converts `Error` objects into user-friendly `string` messages for the CLI. (Error -> String)
-5.  **`@modelcontextprotocol/sdk Server`:** Formats *thrown*, tagged errors into the top-level JSON-RPC `error` object and *returned* `isError: true` results into the JSON-RPC `result` object. (Tagged Error -> JSON-RPC Error / MCP Result Object -> JSON-RPC Result)
+2. **Business Logic Errors** (`APP-2xxx` and higher)
+   - Used for all business logic and application-specific errors
+   - Include specific error codes (e.g., APP-2000 for ProjectNotFoundError)
+   - Returned as serialized CallToolResults with `isError: true`

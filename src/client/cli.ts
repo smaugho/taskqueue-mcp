@@ -4,7 +4,7 @@ import {
   TaskState, 
   Task, 
   Project
-} from "../types/index.js";
+} from "../types/data.js";
 import { TaskManager } from "../server/TaskManager.js";
 import { formatCliError } from "./errors.js";
 import { formatProjectsList, formatTaskProgressTable } from "./taskFormattingUtils.js";

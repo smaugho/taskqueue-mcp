@@ -1,7 +1,8 @@
 import { Tool } from "@modelcontextprotocol/sdk/types.js";
 import { TaskManager } from "./TaskManager.js";
-import { normalizeError } from "../utils/errors.js";
 import { toolExecutorMap } from "./toolExecutors.js";
+import { AppError, AppErrorCode } from "../types/errors.js";
+import { McpError, CallToolResult, ErrorCode } from "@modelcontextprotocol/sdk/types.js";
 
 // ---------------------- PROJECT TOOLS ----------------------
 
@@ -450,14 +451,13 @@ export async function executeToolAndHandleErrors(
   toolName: string,
   args: Record<string, unknown>,
   taskManager: TaskManager
-): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
+): Promise<CallToolResult> {
   const executor = toolExecutorMap.get(toolName);
 
-  // 1. Handle "Tool Not Found" - This is a Protocol Error (-32601 Method not found)
+  // 1. Handle "Tool Not Found"
   if (!executor) {
-    const error = new Error(`Unknown tool: ${toolName}`);
-    (error as any).jsonRpcCode = -32601; // Tag as protocol error
-    throw error; // Throw for SDK to handle
+    const protocolError = new McpError(ErrorCode.MethodNotFound, `Unknown tool: ${toolName}`);
+    throw protocolError; // Throw McpError for SDK to handle
   }
 
   try {
@@ -469,24 +469,26 @@ export async function executeToolAndHandleErrors(
       content: [{ type: "text", text: JSON.stringify(resultData, null, 2) }]
     };
 
-  } catch (error: unknown) {
-    // 4. Handle ALL errors thrown during execution
-    const potentialProtocolError = error as any;
-
-    if (potentialProtocolError?.jsonRpcCode) {
-      // 4a. If it's tagged as a protocol error (e.g., from validation), re-throw it.
-      // The MCP SDK Server will catch this and format the top-level JSON-RPC error.
-      throw potentialProtocolError;
-    } else {
-      // 4b. Otherwise, it's a Tool Execution Error.
-      console.error(`Tool Execution Error [${toolName}]:`, error); // Log the original error for debugging
-      const normalized = normalizeError(error); // Get standardized message/details
-
-      // Format and RETURN the error within the 'result' field structure.
-      return {
-        content: [{ type: "text", text: `Tool execution failed: ${normalized.message}` }],
-        isError: true // Mark as an execution error as per MCP spec
-      };
+  } catch (error: AppError | unknown) {
+    // 4a. Handle protocol errors (missing params, invalid args)
+    if (error instanceof AppError) {
+      if (error.code === AppErrorCode.MissingParameter || error.code === AppErrorCode.InvalidArgument) {
+        throw new McpError(ErrorCode.InvalidParams, error.message);
+      }
     }
+
+    // 4b. Handle all other errors as tool execution failures
+    console.error(`Tool Execution Error [${toolName}]:`, error);
+
+    // Get error message, handling both Error objects and unknown error types
+    const errorMessage = error instanceof Error 
+      ? error.message 
+      : String(error);
+
+    // Format and RETURN the error within the 'result' field structure.
+    return {
+      content: [{ type: "text", text: `Tool execution failed: ${errorMessage}` }],
+      isError: true // Mark as an execution error as per MCP spec
+    };
   }
 }

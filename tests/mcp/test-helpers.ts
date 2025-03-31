@@ -1,7 +1,7 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
-import { Task, Project, TaskManagerFile } from "../../src/types/index.js";
+import { Task, Project, TaskManagerFile } from "../../src/types/data.js";
 import * as path from 'node:path';
 import * as os from 'node:os';
 import * as fs from 'node:fs/promises';
@@ -41,7 +41,7 @@ export async function setupTestContext(): Promise<TestContext> {
       DEBUG: "mcp:*",  // Enable MCP debug logging
       // Pass API keys from the test runner's env to the child process env
       OPENAI_API_KEY: process.env.OPENAI_API_KEY ?? '',
-      GEMINI_API_KEY: process.env.GEMINI_API_KEY ?? ''
+      GOOGLE_GENERATIVE_AI_API_KEY: process.env.GOOGLE_GENERATIVE_AI_API_KEY ?? ''
     }
   });
 
@@ -146,7 +146,7 @@ export function verifyToolExecutionError(response: CallToolResult, expectedMessa
 /**
  * Verifies that a successful tool response contains valid JSON data
  */
-export function verifyToolSuccessResponse<T = unknown>(response: CallToolResult): { data: T } {
+export function verifyToolSuccessResponse<T = unknown>(response: CallToolResult): T {
   verifyCallToolResult(response);
   expect(response.isError).toBeFalsy();
   const jsonText = response.content[0]?.text;
@@ -173,11 +173,8 @@ export async function createTestProject(client: Client, options: {
     }
   }) as CallToolResult;
 
-  verifyCallToolResult(createResult);
-  expect(createResult.isError).toBeFalsy();
-  
-  const responseData = JSON.parse((createResult.content[0] as { text: string }).text);
-  return responseData.data.projectId;
+  const responseData = verifyToolSuccessResponse<{ projectId: string }>(createResult);
+  return responseData.projectId;
 }
 
 /**
@@ -189,11 +186,8 @@ export async function getFirstTaskId(client: Client, projectId: string): Promise
     arguments: { projectId }
   }) as CallToolResult;
 
-  verifyCallToolResult(nextTaskResult);
-  expect(nextTaskResult.isError).toBeFalsy();
-  
-  const nextTask = JSON.parse((nextTaskResult.content[0] as { text: string }).text);
-  return nextTask.data.task.id;
+  const nextTask = verifyToolSuccessResponse<{ task: { id: string } }>(nextTaskResult);
+  return nextTask.task.id;
 }
 
 /**

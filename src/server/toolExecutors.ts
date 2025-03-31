@@ -1,4 +1,5 @@
 import { TaskManager } from "./TaskManager.js";
+import { AppError, AppErrorCode } from "../types/errors.js";
 
 /**
  * Interface defining the contract for tool executors.
@@ -24,15 +25,14 @@ interface ToolExecutor {
 // ---------------------- UTILITY FUNCTIONS ----------------------
 
 /**
- * Throws a JSON-RPC error if a required parameter is not present or not a string.
+ * Throws an AppError if a required parameter is not present or not a string.
  */
 function validateRequiredStringParam(param: unknown, paramName: string): string {
   if (typeof param !== "string" || !param) {
-    const message = `Invalid or missing required parameter: ${paramName} (Expected string)`;
-    const error = new Error(message);
-    // Tag as a protocol error (Invalid Params)
-    (error as any).jsonRpcCode = -32602;
-    throw error;
+    throw new AppError(
+      `Invalid or missing required parameter: ${paramName} (Expected string)`,
+      AppErrorCode.MissingParameter
+    );
   }
   return param;
 }
@@ -52,15 +52,14 @@ function validateTaskId(taskId: unknown): string {
 }
 
 /**
- * Throws a JSON-RPC error if tasks is not defined or not an array.
+ * Throws an AppError if tasks is not defined or not an array.
  */
 function validateTaskList(tasks: unknown): void {
   if (!Array.isArray(tasks)) {
-    const message = "Invalid or missing required parameter: tasks (Expected array)";
-    const error = new Error(message);
-    // Tag as a protocol error (Invalid Params)
-    (error as any).jsonRpcCode = -32602;
-    throw error;
+    throw new AppError(
+      "Invalid or missing required parameter: tasks (Expected array)",
+      AppErrorCode.InvalidArgument
+    );
   }
 }
 
@@ -73,11 +72,10 @@ function validateOptionalStateParam(
 ): string | undefined {
   if (state === undefined) return undefined;
   if (typeof state === "string" && validStates.includes(state)) return state;
-  const message = `Invalid state parameter. Must be one of: ${validStates.join(", ")}`;
-  const error = new Error(message);
-  // Tag as a protocol error (Invalid Params)
-  (error as any).jsonRpcCode = -32602;
-  throw error;
+  throw new AppError(
+    `Invalid state parameter. Must be one of: ${validStates.join(", ")}`,
+    AppErrorCode.InvalidState
+  );
 }
 
 /**
@@ -97,11 +95,10 @@ function validateTaskObjects(
 
   return taskArray.map((task, index) => {
     if (!task || typeof task !== "object") {
-      const message = `${errorPrefix || "Task"} at index ${index} must be an object`;
-      const error = new Error(message);
-      // Tag as a protocol error (Invalid Params)
-      (error as any).jsonRpcCode = -32602;
-      throw error;
+      throw new AppError(
+        `${errorPrefix || "Task"} at index ${index} must be an object`,
+        AppErrorCode.InvalidArgument
+      );
     }
 
     const t = task as Record<string, unknown>;
@@ -152,25 +149,24 @@ toolExecutorMap.set(listProjectsToolExecutor.name, listProjectsToolExecutor);
 const createProjectToolExecutor: ToolExecutor = {
   name: "create_project",
   async execute(taskManager, args) {
-    // 1. Argument Validation (throws tagged Error for protocol errors)
     const initialPrompt = validateRequiredStringParam(args.initialPrompt, "initialPrompt");
-    const validatedTasks = validateTaskObjects(args.tasks); // Throws tagged error if invalid
+    const validatedTasks = validateTaskObjects(args.tasks);
     const projectPlan = args.projectPlan !== undefined ? String(args.projectPlan) : undefined;
     const autoApprove = args.autoApprove === true;
 
     if (args.projectPlan !== undefined && typeof args.projectPlan !== 'string') {
-      const error = new Error("Invalid type for optional parameter 'projectPlan' (Expected string)");
-      (error as any).jsonRpcCode = -32602;
-      throw error;
+      throw new AppError(
+        "Invalid type for optional parameter 'projectPlan' (Expected string)",
+        AppErrorCode.InvalidArgument
+      );
     }
     if (args.autoApprove !== undefined && typeof args.autoApprove !== 'boolean') {
-      const error = new Error("Invalid type for optional parameter 'autoApprove' (Expected boolean)");
-      (error as any).jsonRpcCode = -32602;
-      throw error;
+      throw new AppError(
+        "Invalid type for optional parameter 'autoApprove' (Expected boolean)",
+        AppErrorCode.InvalidArgument
+      );
     }
 
-    // 2. Core Logic Execution (Can throw *untagged* errors for execution failures)
-    // TaskManager now returns raw data or throws its internal errors
     const resultData = await taskManager.createProject(
       initialPrompt,
       validatedTasks,
@@ -178,7 +174,6 @@ const createProjectToolExecutor: ToolExecutor = {
       autoApprove
     );
 
-    // 3. Return raw success data - NO try/catch or formatting here
     return resultData;
   },
 };
@@ -197,32 +192,36 @@ const generateProjectPlanToolExecutor: ToolExecutor = {
 
     // Validate provider is one of the allowed values
     if (!["openai", "google", "deepseek"].includes(provider)) {
-      const error = new Error(`Invalid provider: ${provider}. Must be one of: openai, google, deepseek`);
-      (error as any).jsonRpcCode = -32602;
-      throw error;
+      throw new AppError(
+        `Invalid provider: ${provider}. Must be one of: openai, google, deepseek`,
+        AppErrorCode.InvalidArgument
+      );
     }
 
     // Check that the corresponding API key is set
-    const envKey = `${provider.toUpperCase()}_API_KEY`;
+    const envKey = provider === "google" ? "GOOGLE_GENERATIVE_AI_API_KEY" : `${provider.toUpperCase()}_API_KEY`;
     if (!process.env[envKey]) {
-      const error = new Error(`Missing ${envKey} environment variable required for ${provider}`);
-      (error as any).jsonRpcCode = -32602;
-      throw error;
+      throw new AppError(
+        `Missing ${envKey} environment variable required for ${provider}`,
+        AppErrorCode.ConfigurationError
+      );
     }
 
     // Validate optional attachments
     let attachments: string[] = [];
     if (args.attachments !== undefined) {
       if (!Array.isArray(args.attachments)) {
-        const error = new Error("Invalid attachments: must be an array of strings");
-        (error as any).jsonRpcCode = -32602;
-        throw error;
+        throw new AppError(
+          "Invalid attachments: must be an array of strings",
+          AppErrorCode.InvalidArgument
+        );
       }
       attachments = args.attachments.map((att, index) => {
         if (typeof att !== "string") {
-          const error = new Error(`Invalid attachment at index ${index}: must be a string`);
-          (error as any).jsonRpcCode = -32602;
-          throw error;
+          throw new AppError(
+            `Invalid attachment at index ${index}: must be a string`,
+            AppErrorCode.InvalidArgument
+          );
         }
         return att;
       });
@@ -266,13 +265,10 @@ toolExecutorMap.set(getNextTaskToolExecutor.name, getNextTaskToolExecutor);
 const updateTaskToolExecutor: ToolExecutor = {
   name: "update_task",
   async execute(taskManager, args) {
-    // 1. Argument Validation
     const projectId = validateProjectId(args.projectId);
     const taskId = validateTaskId(args.taskId);
-
     const updates: Record<string, string> = {};
 
-    // Optional fields
     if (args.title !== undefined) {
       updates.title = validateRequiredStringParam(args.title, "title");
     }
@@ -281,31 +277,33 @@ const updateTaskToolExecutor: ToolExecutor = {
     }
     if (args.toolRecommendations !== undefined) {
       if (typeof args.toolRecommendations !== "string") {
-        const error = new Error("Invalid toolRecommendations: must be a string");
-        (error as any).jsonRpcCode = -32602;
-        throw error;
+        throw new AppError(
+          "Invalid toolRecommendations: must be a string",
+          AppErrorCode.InvalidArgument
+        );
       }
       updates.toolRecommendations = args.toolRecommendations;
     }
     if (args.ruleRecommendations !== undefined) {
       if (typeof args.ruleRecommendations !== "string") {
-        const error = new Error("Invalid ruleRecommendations: must be a string");
-        (error as any).jsonRpcCode = -32602;
-        throw error;
+        throw new AppError(
+          "Invalid ruleRecommendations: must be a string",
+          AppErrorCode.InvalidArgument
+        );
       }
       updates.ruleRecommendations = args.ruleRecommendations;
     }
 
-    // Status transitions
     if (args.status !== undefined) {
       const status = args.status;
       if (
         typeof status !== "string" ||
         !["not started", "in progress", "done"].includes(status)
       ) {
-        const error = new Error("Invalid status: must be one of 'not started', 'in progress', 'done'");
-        (error as any).jsonRpcCode = -32602;
-        throw error;
+        throw new AppError(
+          "Invalid status: must be one of 'not started', 'in progress', 'done'",
+          AppErrorCode.InvalidArgument
+        );
       }
       if (status === "done") {
         updates.completedDetails = validateRequiredStringParam(
@@ -316,10 +314,7 @@ const updateTaskToolExecutor: ToolExecutor = {
       updates.status = status;
     }
 
-    // 2. Core Logic Execution
     const resultData = await taskManager.updateTask(projectId, taskId, updates);
-
-    // 3. Return raw success data
     return resultData;
   },
 };
@@ -349,25 +344,21 @@ toolExecutorMap.set(readProjectToolExecutor.name, readProjectToolExecutor);
 const deleteProjectToolExecutor: ToolExecutor = {
   name: "delete_project",
   async execute(taskManager, args) {
-    // 1. Argument Validation
     const projectId = validateProjectId(args.projectId);
 
-    // 2. Core Logic Execution
     const projectIndex = taskManager["data"].projects.findIndex(
       (p) => p.projectId === projectId
     );
     if (projectIndex === -1) {
-      return {
-        status: "error",
-        message: "Project not found",
-      };
+      throw new AppError(
+        `Project not found: ${projectId}`,
+        AppErrorCode.ProjectNotFound
+      );
     }
 
-    // Remove project and save
     taskManager["data"].projects.splice(projectIndex, 1);
     await taskManager["saveTasks"]();
 
-    // 3. Return raw success data
     return {
       status: "project_deleted",
       message: `Project ${projectId} has been deleted.`,
@@ -461,20 +452,21 @@ toolExecutorMap.set(readTaskToolExecutor.name, readTaskToolExecutor);
 const createTaskToolExecutor: ToolExecutor = {
   name: "create_task",
   async execute(taskManager, args) {
-    // 1. Argument Validation
     const projectId = validateProjectId(args.projectId);
     const title = validateRequiredStringParam(args.title, "title");
     const description = validateRequiredStringParam(args.description, "description");
 
     if (args.toolRecommendations !== undefined && typeof args.toolRecommendations !== "string") {
-      const error = new Error("Invalid type for optional parameter 'toolRecommendations' (Expected string)");
-      (error as any).jsonRpcCode = -32602;
-      throw error;
+      throw new AppError(
+        "Invalid type for optional parameter 'toolRecommendations' (Expected string)",
+        AppErrorCode.InvalidArgument
+      );
     }
     if (args.ruleRecommendations !== undefined && typeof args.ruleRecommendations !== "string") {
-      const error = new Error("Invalid type for optional parameter 'ruleRecommendations' (Expected string)");
-      (error as any).jsonRpcCode = -32602;
-      throw error;
+      throw new AppError(
+        "Invalid type for optional parameter 'ruleRecommendations' (Expected string)",
+        AppErrorCode.InvalidArgument
+      );
     }
 
     const singleTask = {
@@ -484,10 +476,7 @@ const createTaskToolExecutor: ToolExecutor = {
       ruleRecommendations: args.ruleRecommendations ? String(args.ruleRecommendations) : undefined,
     };
 
-    // 2. Core Logic Execution
     const resultData = await taskManager.addTasksToProject(projectId, [singleTask]);
-
-    // 3. Return raw success data
     return resultData;
   },
 };
