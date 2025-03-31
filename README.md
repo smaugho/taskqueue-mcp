@@ -40,14 +40,14 @@ This will show the available commands and options.
 The task manager supports multiple LLM providers for generating project plans. You can configure one or more of the following environment variables depending on which providers you want to use:
 
 - `OPENAI_API_KEY`: Required for using OpenAI models (e.g., GPT-4)
-- `GOOGLE_API_KEY`: Required for using Google's Gemini models
+- `GEMINI_API_KEY`: Required for using Google's Gemini models
 - `DEEPSEEK_API_KEY`: Required for using Deepseek models
 
 To generate project plans using the CLI, set these environment variables in your shell:
 
 ```bash
 export OPENAI_API_KEY="your-api-key"
-export GOOGLE_API_KEY="your-api-key"
+export GEMINI_API_KEY="your-api-key"
 export DEEPSEEK_API_KEY="your-api-key"
 ```
 
@@ -61,7 +61,7 @@ Or you can include them in your MCP client configuration to generate project pla
       "args": ["-y", "taskqueue-mcp"],
       "env": {
         "OPENAI_API_KEY": "your-api-key",
-        "GOOGLE_API_KEY": "your-api-key",
+        "GEMINI_API_KEY": "your-api-key",
         "DEEPSEEK_API_KEY": "your-api-key"
       }
     }

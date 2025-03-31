@@ -504,7 +504,7 @@ describe('TaskManager Integration', () => {
 
   // --- NEW API TEST ---
   // Skip this test by default, as it requires live API keys and makes external calls.
-  // Remove '.skip' and ensure OPENAI_API_KEY, GOOGLE_API_KEY, DEEPSEEK_API_KEY are in .env to run.
+  // Remove '.skip' and ensure OPENAI_API_KEY, GEMINI_API_KEY, DEEPSEEK_API_KEY are in .env to run.
   it.skip("should generate a project plan using live APIs", async () => {
     const testPrompt = "Create a plan for a simple web server using Node.js and Express.";
     const attachments: string[] = []; // Add mock attachment content if needed
@@ -546,7 +546,7 @@ describe('TaskManager Integration', () => {
     }
 
     // --- Test Google ---
-    if (process.env.GOOGLE_API_KEY) {
+    if (process.env.GEMINI_API_KEY) {
       console.log("Testing Google Gemini API...");
        try {
         const googleResult = await server.generateProjectPlan({
@@ -578,7 +578,7 @@ describe('TaskManager Integration', () => {
          expect(error).toBeNull();
       }
     } else {
-      console.warn("Skipping Google test: GOOGLE_API_KEY not found in environment.");
+      console.warn("Skipping Google test: GEMINI_API_KEY not found in environment.");
     }
     
     // --- Test DeepSeek ---
