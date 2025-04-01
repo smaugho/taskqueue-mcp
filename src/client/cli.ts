@@ -14,7 +14,7 @@ const program = new Command();
 program
   .name("taskqueue")
   .description("CLI for the Task Manager MCP Server")
-  .version("1.3.4")
+  .version("1.4.0")
   .option(
     '-f, --file-path <path>',
     'Specify the path to the tasks JSON file. Overrides TASK_MANAGER_FILE_PATH env var.'
@@ -235,7 +235,7 @@ program
           // Filter tasks based on state if provided
           const tasksToList = filterState
             ? project.tasks.filter((task: Task) => {
-                if (filterState === 'open') return task.status !== 'done';
+                if (filterState === 'open') return !task.approved;
                 if (filterState === 'pending_approval') return task.status === 'done' && !task.approved;
                 if (filterState === 'completed') return task.status === 'done' && task.approved;
                 return true; // Should not happen

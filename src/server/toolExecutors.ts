@@ -418,10 +418,11 @@ const readTaskToolExecutor: ToolExecutor = {
   name: "read_task",
   async execute(taskManager, args) {
     // 1. Argument Validation
+    const projectId = validateProjectId(args.projectId);
     const taskId = validateTaskId(args.taskId);
 
     // 2. Core Logic Execution
-    const resultData = await taskManager.openTaskDetails(taskId);
+    const resultData = await taskManager.openTaskDetails(projectId, taskId);
 
     // 3. Return raw success data
     return resultData;

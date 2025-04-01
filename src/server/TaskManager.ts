@@ -364,20 +364,24 @@ export class TaskManager {
     };
   }
 
-  public async openTaskDetails(taskId: string): Promise<OpenTaskSuccessData> {
+  public async openTaskDetails(projectId: string, taskId: string): Promise<OpenTaskSuccessData> {
     await this.ensureInitialized();
     await this.reloadFromDisk();
 
-    for (const proj of this.data.projects) {
-      const target = proj.tasks.find((t) => t.id === taskId);
-      if (target) {
-        return {
-          projectId: proj.projectId,
-          task: { ...target },
-        };
-      }
+    const project = this.data.projects.find((p) => p.projectId === projectId);
+    if (!project) {
+      throw new AppError(`Project ${projectId} not found`, AppErrorCode.ProjectNotFound);
     }
-    throw new AppError(`Task ${taskId} not found`, AppErrorCode.TaskNotFound);
+
+    const target = project.tasks.find((t) => t.id === taskId);
+    if (!target) {
+      throw new AppError(`Task ${taskId} not found`, AppErrorCode.TaskNotFound);
+    }
+
+    return {
+      projectId: project.projectId,
+      task: { ...target },
+    };
   }
 
   public async listProjects(state?: TaskState): Promise<ListProjectsSuccessData> {
@@ -442,7 +446,7 @@ export class TaskManager {
       allTasks = allTasks.filter((task) => {
         switch (state) {
           case "open":
-            return task.status !== "done";
+            return !task.approved;
           case "completed":
             return task.status === "done" && task.approved;
           case "pending_approval":

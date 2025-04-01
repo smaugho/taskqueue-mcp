@@ -261,12 +261,16 @@ const readTaskTool: Tool = {
   inputSchema: {
     type: "object",
     properties: {
+      projectId: {
+        type: "string",
+        description: "The ID of the project containing the task (e.g., proj-1).",
+      },
       taskId: {
         type: "string",
         description: "The ID of the task to read (e.g., task-1).",
       },
     },
-    required: ["taskId"],
+    required: ["projectId", "taskId"],
   },
 };
 
