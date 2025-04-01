@@ -295,7 +295,8 @@ describe('generate_project_plan Tool', () => {
       }
     });
 
-    it('should return error for invalid model', async () => {
+    // Skip by default as it requires OpenAI API key
+    it.skip('should return error for invalid model', async () => {
       const context = await setupTestContext();
 
       try {
