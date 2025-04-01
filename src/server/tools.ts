@@ -474,9 +474,7 @@ export async function executeToolAndHandleErrors(
     if (error instanceof AppError) {
       if ([
           AppErrorCode.MissingParameter, 
-          AppErrorCode.InvalidArgument,
-          AppErrorCode.InvalidState,
-          AppErrorCode.ConfigurationError
+          AppErrorCode.InvalidArgument
         ].includes(error.code as AppErrorCode)
       ) {
         throw new McpError(ErrorCode.InvalidParams, error.message);

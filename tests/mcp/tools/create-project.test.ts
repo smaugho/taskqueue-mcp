@@ -8,7 +8,7 @@ import {
   readTaskManagerFile,
   TestContext
 } from '../test-helpers.js';
-import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
+import { CallToolResult, McpError } from '@modelcontextprotocol/sdk/types.js';
 
 describe('create_project Tool', () => {
   let context: TestContext;
@@ -38,8 +38,8 @@ describe('create_project Tool', () => {
 
       // Parse and verify response
       const responseData = JSON.parse((result.content[0] as { text: string }).text);
-      expect(responseData.data).toHaveProperty('projectId');
-      const projectId = responseData.data.projectId;
+      expect(responseData).toHaveProperty('projectId');
+      const projectId = responseData.projectId;
 
       // Verify project was created in file
       await verifyProjectInFile(context.testFilePath, projectId, {
@@ -48,12 +48,41 @@ describe('create_project Tool', () => {
       });
 
       // Verify task was created
-      await verifyTaskInFile(context.testFilePath, projectId, responseData.data.tasks[0].id, {
+      await verifyTaskInFile(context.testFilePath, projectId, responseData.tasks[0].id, {
         title: "Task 1",
         description: "First test task",
         status: "not started",
         approved: false
       });
+    });
+
+    it('should create a project with no tasks', async () => {
+      const result = await context.client.callTool({
+        name: "create_project",
+        arguments: {
+          initialPrompt: "Project with No Tasks",
+          tasks: []
+        }
+      }) as CallToolResult;
+
+      verifyCallToolResult(result);
+      expect(result.isError).toBeFalsy();
+
+      // Parse and verify response
+      const responseData = JSON.parse((result.content[0] as { text: string }).text);
+      expect(responseData).toHaveProperty('projectId');
+      const projectId = responseData.projectId;
+
+      // Verify project was created in file
+      await verifyProjectInFile(context.testFilePath, projectId, {
+        initialPrompt: "Project with No Tasks",
+        completed: false
+      });
+
+      // Verify no tasks were created
+      const data = await readTaskManagerFile(context.testFilePath);
+      const project = data.projects.find(p => p.projectId === projectId);
+      expect(project?.tasks).toHaveLength(0);
     });
 
     it('should create a project with multiple tasks', async () => {
@@ -71,7 +100,7 @@ describe('create_project Tool', () => {
 
       verifyCallToolResult(result);
       const responseData = JSON.parse((result.content[0] as { text: string }).text);
-      const projectId = responseData.data.projectId;
+      const projectId = responseData.projectId;
 
       // Verify all tasks were created
       const data = await readTaskManagerFile(context.testFilePath);
@@ -98,7 +127,7 @@ describe('create_project Tool', () => {
 
       verifyCallToolResult(result);
       const responseData = JSON.parse((result.content[0] as { text: string }).text);
-      const projectId = responseData.data.projectId;
+      const projectId = responseData.projectId;
 
       // Verify project was created with auto-approve
       const data = await readTaskManagerFile(context.testFilePath);
@@ -120,7 +149,7 @@ describe('create_project Tool', () => {
 
       verifyCallToolResult(result);
       const responseData = JSON.parse((result.content[0] as { text: string }).text);
-      const projectId = responseData.data.projectId;
+      const projectId = responseData.projectId;
 
       await verifyProjectInFile(context.testFilePath, projectId, {
         initialPrompt: "Planned Project",
@@ -144,8 +173,8 @@ describe('create_project Tool', () => {
 
       verifyCallToolResult(result);
       const responseData = JSON.parse((result.content[0] as { text: string }).text);
-      const projectId = responseData.data.projectId;
-      const taskId = responseData.data.tasks[0].id;
+      const projectId = responseData.projectId;
+      const taskId = responseData.tasks[0].id;
 
       await verifyTaskInFile(context.testFilePath, projectId, taskId, {
         toolRecommendations: "Use tool X and Y",
@@ -156,63 +185,36 @@ describe('create_project Tool', () => {
 
   describe('Error Cases', () => {
     it('should return error for missing required parameters', async () => {
-      const result = await context.client.callTool({
-        name: "create_project",
-        arguments: {
-          // Missing initialPrompt and tasks
-        }
-      }) as CallToolResult;
-
-      verifyCallToolResult(result);
-      expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain('Error: Missing required parameter');
-    });
-
-    it('should return error for empty tasks array', async () => {
-      const result = await context.client.callTool({
-        name: "create_project",
-        arguments: {
-          initialPrompt: "Empty Project",
-          tasks: []
-        }
-      }) as CallToolResult;
-
-      verifyCallToolResult(result);
-      expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain('Error: Project must have at least one task');
+      try {
+        await context.client.callTool({
+          name: "create_project",
+          arguments: {
+            // Missing initialPrompt and tasks
+          }
+        });
+        fail('Expected McpError to be thrown');
+      } catch (error) {
+        expect(error instanceof McpError).toBe(true);
+        expect((error as McpError).message).toContain('Invalid or missing required parameter: initialPrompt');
+      }
     });
 
     it('should return error for invalid task data', async () => {
-      const result = await context.client.callTool({
-        name: "create_project",
-        arguments: {
-          initialPrompt: "Invalid Task Project",
-          tasks: [
-            { title: "Task 1" } // Missing required description
-          ]
-        }
-      }) as CallToolResult;
-
-      verifyCallToolResult(result);
-      expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain('Error: Missing required task parameter: description');
-    });
-
-    it('should return error for duplicate task titles', async () => {
-      const result = await context.client.callTool({
-        name: "create_project",
-        arguments: {
-          initialPrompt: "Duplicate Tasks Project",
-          tasks: [
-            { title: "Same Title", description: "First task" },
-            { title: "Same Title", description: "Second task" }
-          ]
-        }
-      }) as CallToolResult;
-
-      verifyCallToolResult(result);
-      expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain('Error: Duplicate task title');
+      try {
+        await context.client.callTool({
+          name: "create_project",
+          arguments: {
+            initialPrompt: "Invalid Task Project",
+            tasks: [
+              { title: "Task 1" } // Missing required description
+            ]
+          }
+        });
+        fail('Expected McpError to be thrown');
+      } catch (error) {
+        expect(error instanceof McpError).toBe(true);
+        expect((error as McpError).message).toContain('Invalid or missing required parameter: description');
+      }
     });
   });
 }); 

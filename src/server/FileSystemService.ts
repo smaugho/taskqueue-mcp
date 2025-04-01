@@ -3,6 +3,7 @@ import { dirname, join, resolve } from "node:path";
 import { homedir } from "node:os";
 import { AppError, AppErrorCode } from "../types/errors.js";
 import { TaskManagerFile } from "../types/data.js";
+import * as fs from 'node:fs';
 
 export interface InitializedTaskData {
   data: TaskManagerFile;
@@ -12,12 +13,11 @@ export interface InitializedTaskData {
 
 export class FileSystemService {
   private filePath: string;
-  // Simple in-memory queue to prevent concurrent file operations
-  private operationInProgress: boolean = false;
-  private operationQueue: (() => void)[] = [];
+  private lockFilePath: string;
 
   constructor(filePath: string) {
     this.filePath = filePath;
+    this.lockFilePath = `${filePath}.lock`;
   }
 
   /**
@@ -41,39 +41,48 @@ export class FileSystemService {
   }
 
   /**
-   * Queue a file operation to prevent concurrent access
-   * @param operation The operation to perform
-   * @returns Promise that resolves when the operation completes
+   * Acquires a file system lock
    */
-  private async queueOperation<T>(operation: () => Promise<T>): Promise<T> {
-    // If another operation is in progress, wait for it to complete
-    if (this.operationInProgress) {
-      return new Promise<T>((resolve, reject) => {
-        this.operationQueue.push(() => {
-          this.executeOperation(operation).then(resolve).catch(reject);
-        });
-      });
+  private async acquireLock(): Promise<void> {
+    while (true) {
+      try {
+        // Try to create lock file
+        const fd = fs.openSync(this.lockFilePath, 'wx');
+        fs.closeSync(fd);
+        return;
+      } catch (error: any) {
+        if (error.code === 'EEXIST') {
+          // Lock file exists, wait and retry
+          await new Promise(resolve => setTimeout(resolve, 100));
+          continue;
+        }
+        throw error;
+      }
     }
-
-    return this.executeOperation(operation);
   }
 
   /**
-   * Execute a file operation with mutex protection
-   * @param operation The operation to perform
-   * @returns Promise that resolves when the operation completes
+   * Releases the file system lock
+   */
+  private async releaseLock(): Promise<void> {
+    try {
+      await fs.promises.unlink(this.lockFilePath);
+    } catch (error: any) {
+      if (error.code !== 'ENOENT') {
+        throw error;
+      }
+    }
+  }
+
+  /**
+   * Execute a file operation with file system lock
    */
   private async executeOperation<T>(operation: () => Promise<T>): Promise<T> {
-    this.operationInProgress = true;
+    await this.acquireLock();
     try {
       return await operation();
     } finally {
-      this.operationInProgress = false;
-      // Process the next operation in the queue, if any
-      const nextOperation = this.operationQueue.shift();
-      if (nextOperation) {
-        nextOperation();
-      }
+      await this.releaseLock();
     }
   }
 
@@ -81,7 +90,7 @@ export class FileSystemService {
    * Loads and initializes task data from the JSON file
    */
   public async loadAndInitializeTasks(): Promise<InitializedTaskData> {
-    return this.queueOperation(async () => {
+    return this.executeOperation(async () => {
       const data = await this.loadTasks();
       const { maxProjectId, maxTaskId } = this.calculateMaxIds(data);
       
@@ -95,11 +104,9 @@ export class FileSystemService {
 
   /**
    * Explicitly reloads task data from the disk
-   * This is useful when the file may have been changed by another process
-   * @returns The latest task data from disk
    */
   public async reloadTasks(): Promise<TaskManagerFile> {
-    return this.queueOperation(async () => {
+    return this.executeOperation(async () => {
       return this.loadTasks();
     });
   }
@@ -140,7 +147,8 @@ export class FileSystemService {
     } catch (error) {
       if (error instanceof Error) {
         if (error.message.includes('ENOENT')) {
-          throw new AppError(`Tasks file not found: ${this.filePath}`, AppErrorCode.FileReadError, error);
+          // If file doesn't exist, return empty data
+          return { projects: [] };
         }
         throw new AppError(`Failed to read tasks file: ${error.message}`, AppErrorCode.FileReadError, error);
       }
@@ -149,10 +157,10 @@ export class FileSystemService {
   }
 
   /**
-   * Saves task data to the JSON file with an in-memory mutex to prevent concurrent writes
+   * Saves task data to the JSON file with file system lock
    */
   public async saveTasks(data: TaskManagerFile): Promise<void> {
-    return this.queueOperation(async () => {
+    return this.executeOperation(async () => {
       try {
         // Ensure directory exists before writing
         const dir = dirname(this.filePath);

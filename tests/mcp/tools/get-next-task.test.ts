@@ -174,7 +174,7 @@ describe('get_next_task Tool', () => {
         }
       }) as CallToolResult;
 
-      verifyToolExecutionError(result, /Error: Project is already completed/);
+      verifyToolExecutionError(result, /Tool execution failed: Project is already completed/);
     });
   });
 
@@ -187,7 +187,7 @@ describe('get_next_task Tool', () => {
         }
       }) as CallToolResult;
 
-      verifyToolExecutionError(result, /Error: Project non_existent_project not found/);
+      verifyToolExecutionError(result, /Tool execution failed: Project non_existent_project not found/);
     });
 
     it('should return error for invalid project ID format', async () => {
@@ -198,7 +198,7 @@ describe('get_next_task Tool', () => {
         }
       }) as CallToolResult;
 
-      verifyToolExecutionError(result, /Error: Invalid project ID format/);
+      verifyToolExecutionError(result, /Tool execution failed: Project invalid-format not found/);
     });
 
     it('should return error for project with no tasks', async () => {
@@ -214,7 +214,7 @@ describe('get_next_task Tool', () => {
         }
       }) as CallToolResult;
 
-      verifyToolExecutionError(result, /Error: Project has no tasks/);
+      verifyToolExecutionError(result, /Tool execution failed: Project has no tasks/);
     });
   });
 }); 

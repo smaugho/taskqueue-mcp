@@ -1,14 +1,16 @@
 // Error Codes
 export enum AppErrorCode {
-    // Configuration / Validation (ERR_1xxx)
+    // Protocol Errors (ERR_1xxx)
     MissingParameter = 'ERR_1000', // General missing param (mapped to protocol -32602)
-    InvalidState = 'ERR_1001', // e.g., invalid state filter
-    InvalidArgument = 'ERR_1002', // General invalid arg (mapped to protocol -32602)
-    ConfigurationError = 'ERR_1003', // e.g., Missing API Key for generate_project_plan
-  
-    // Resource Not Found (ERR_2xxx)
-    ProjectNotFound = 'ERR_2000',
-    TaskNotFound = 'ERR_2001',
+    InvalidArgument = 'ERR_1002', // Extra / invalid param (mapped to protocol -32602)
+
+    // Validation / Resource Not Found (ERR_2xxx)
+    ConfigurationError = 'ERR_2000', // e.g., Missing API Key for generate_project_plan
+    ProjectNotFound = 'ERR_2001',
+    TaskNotFound = 'ERR_2002',
+    InvalidState = 'ERR_2003', // e.g., invalid state filter
+    InvalidProvider = 'ERR_2004', // e.g., invalid model provider
+
     // No need for EmptyTaskFile code, handle during load
   
     // Business Logic / State Rules (ERR_3xxx)
@@ -44,6 +46,9 @@ export enum AppErrorCode {
       this.name = this.constructor.name; // Set name to the specific error class name
       this.code = code;
       this.details = details;
+      
+      // Fix prototype chain for instanceof to work correctly
+      Object.setPrototypeOf(this, AppError.prototype);
     }
   }
   

@@ -221,7 +221,7 @@ export class TaskManager {
         modelProvider = deepseek(model);
         break;
       default:
-        throw new AppError(`Invalid provider: ${provider}`, AppErrorCode.InvalidArgument);
+        throw new AppError(`Invalid provider: ${provider}`, AppErrorCode.InvalidProvider);
     }
 
     try {
@@ -266,6 +266,10 @@ export class TaskManager {
     }
     if (proj.completed) {
       throw new AppError('Project is already completed', AppErrorCode.ProjectAlreadyCompleted);
+    }
+
+    if (!proj.tasks.length) {
+      throw new AppError('Project has no tasks', AppErrorCode.TaskNotFound);
     }
 
     const nextTask = proj.tasks.find((t) => !(t.status === "done" && t.approved));

@@ -3,7 +3,7 @@ import {
   setupTestContext,
   teardownTestContext,
   verifyCallToolResult,
-  verifyProtocolError,
+  verifyToolExecutionError,
   createTestProject,
   getFirstTaskId,
   TestContext
@@ -122,7 +122,7 @@ describe('list_projects Tool', () => {
   });
 
   describe('Error Cases', () => {
-    describe('Protocol Errors', () => {
+    describe('Validation Errors', () => {
       let context: TestContext;
 
       beforeAll(async () => {
@@ -134,15 +134,12 @@ describe('list_projects Tool', () => {
       });
 
       it('should handle invalid state parameter', async () => {
-        try {
-          await context.client.callTool({
-            name: "list_projects",
-            arguments: { state: "invalid_state" }
-          });
-          fail('Expected error was not thrown');
-        } catch (error: any) {
-          verifyProtocolError(error, -32602, "Invalid state parameter. Must be one of: open, pending_approval, completed, all");
-        }
+        const result = await context.client.callTool({
+          name: "list_projects",
+          arguments: { state: "invalid_state" }
+        }) as CallToolResult;
+
+        verifyToolExecutionError(result, /Invalid state parameter. Must be one of: open, pending_approval, completed, all/);
       });
     });
 
@@ -166,9 +163,7 @@ describe('list_projects Tool', () => {
           arguments: {}
         }) as CallToolResult;
 
-        verifyCallToolResult(result);
-        expect(result.isError).toBe(true);
-        expect(result.content[0].text).toMatch(/Tool execution failed: .*(ENOENT|Tasks file not found|Failed to read)/);
+        verifyToolExecutionError(result, /Failed to reload tasks from disk/);
       });
     });
   });

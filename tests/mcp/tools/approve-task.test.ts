@@ -89,19 +89,20 @@ describe('approve_task Tool', () => {
         initialPrompt: "Multi-task Project"
       });
 
-      // Create and approve multiple tasks
-      const tasks = await Promise.all([
-        createTestTaskInFile(context.testFilePath, project.projectId, {
-          title: "Task 1",
-          status: "done",
-          completedDetails: "First task done"
-        }),
-        createTestTaskInFile(context.testFilePath, project.projectId, {
-          title: "Task 2",
-          status: "done",
-          completedDetails: "Second task done"
-        })
-      ]);
+      // Create tasks sequentially
+      const task1 = await createTestTaskInFile(context.testFilePath, project.projectId, {
+        title: "Task 1",
+        status: "done",
+        completedDetails: "First task done"
+      });
+      
+      const task2 = await createTestTaskInFile(context.testFilePath, project.projectId, {
+        title: "Task 2",
+        status: "done",
+        completedDetails: "Second task done"
+      });
+
+      const tasks = [task1, task2];
 
       // Approve tasks in sequence
       for (const task of tasks) {
@@ -135,7 +136,7 @@ describe('approve_task Tool', () => {
 
       verifyCallToolResult(result);
       expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain('Error: Project non_existent_project not found');
+      expect(result.content[0].text).toContain('Tool execution failed: Project non_existent_project not found');
     });
 
     it('should return error for non-existent task', async () => {
@@ -153,7 +154,7 @@ describe('approve_task Tool', () => {
 
       verifyCallToolResult(result);
       expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain('Error: Task non_existent_task not found');
+      expect(result.content[0].text).toContain('Tool execution failed: Task non_existent_task not found');
     });
 
     it('should return error when approving incomplete task', async () => {
@@ -175,7 +176,7 @@ describe('approve_task Tool', () => {
 
       verifyCallToolResult(result);
       expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain('Error: Cannot approve incomplete task');
+      expect(result.content[0].text).toContain('Tool execution failed: Task not done yet');
     });
 
     it('should return error when approving already approved task', async () => {
@@ -199,7 +200,7 @@ describe('approve_task Tool', () => {
 
       verifyCallToolResult(result);
       expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain('Error: Task is already approved');
+      expect(result.content[0].text).toContain('Tool execution failed: Task is already approved');
     });
   });
 }); 

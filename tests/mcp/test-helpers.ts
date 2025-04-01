@@ -2,6 +2,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { Task, Project, TaskManagerFile } from "../../src/types/data.js";
+import { FileSystemService } from "../../src/server/FileSystemService.js";
 import * as path from 'node:path';
 import * as os from 'node:os';
 import * as fs from 'node:fs/promises';
@@ -17,6 +18,7 @@ export interface TestContext {
   tempDir: string;
   testFilePath: string;
   taskCounter: number;
+  fileService: FileSystemService;
 }
 
 /**
@@ -28,9 +30,12 @@ export async function setupTestContext(customFilePath?: string, skipFileInit: bo
   await fs.mkdir(tempDir, { recursive: true });
   const testFilePath = customFilePath || path.join(tempDir, 'test-tasks.json');
 
+  // Create FileSystemService instance
+  const fileService = new FileSystemService(testFilePath);
+
   // Initialize empty task manager file (skip for error testing)
   if (!skipFileInit) {
-    await writeTaskManagerFile(testFilePath, { projects: [] });
+    await fileService.saveTasks({ projects: [] });
   }
 
   // Set up the transport with environment variable for test file
@@ -78,7 +83,7 @@ export async function setupTestContext(customFilePath?: string, skipFileInit: bo
     throw error;
   }
 
-  return { client, transport, tempDir, testFilePath, taskCounter: 0 };
+  return { client, transport, tempDir, testFilePath, taskCounter: 0, fileService };
 }
 
 /**
@@ -196,22 +201,16 @@ export async function getFirstTaskId(client: Client, projectId: string): Promise
  * Reads and parses the task manager file
  */
 export async function readTaskManagerFile(filePath: string): Promise<TaskManagerFile> {
-  try {
-    const content = await fs.readFile(filePath, 'utf-8');
-    return JSON.parse(content);
-  } catch (error) {
-    if ((error as any).code === 'ENOENT') {
-      return { projects: [] };
-    }
-    throw error;
-  }
+  const fileService = new FileSystemService(filePath);
+  return fileService.reloadTasks();
 }
 
 /**
  * Writes data to the task manager file
  */
 export async function writeTaskManagerFile(filePath: string, data: TaskManagerFile): Promise<void> {
-  await fs.writeFile(filePath, JSON.stringify(data, null, 2), 'utf-8');
+  const fileService = new FileSystemService(filePath);
+  await fileService.saveTasks(data);
 }
 
 /**
