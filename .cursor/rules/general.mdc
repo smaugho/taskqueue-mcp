@@ -1,0 +1,6 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+Work step-by-step. If presented with an implementation plan, implement the plan exactly. If the plan presents more than one implementation option, consult with the human user to decide between options. If you are tempted to embellish or imporve upon the plan, consult with the human user. Always complete the current task and wait for human review before proceeding to the next task.

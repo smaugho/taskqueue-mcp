@@ -1,13 +1,11 @@
 import { Command } from "commander";
 import chalk from "chalk";
 import { 
-  ErrorCode, 
   TaskState, 
   Task, 
   Project
-} from "../types/index.js";
+} from "../types/data.js";
 import { TaskManager } from "../server/TaskManager.js";
-import { createError, normalizeError } from "../utils/errors.js";
 import { formatCliError } from "./errors.js";
 import { formatProjectsList, formatTaskProgressTable } from "./taskFormattingUtils.js";
 
@@ -16,7 +14,7 @@ const program = new Command();
 program
   .name("taskqueue")
   .description("CLI for the Task Manager MCP Server")
-  .version("1.3.4")
+  .version("1.4.0")
   .option(
     '-f, --file-path <path>',
     'Specify the path to the tasks JSON file. Overrides TASK_MANAGER_FILE_PATH env var.'
@@ -32,7 +30,7 @@ program.hook('preAction', (thisCommand, actionCommand) => {
   try {
     taskManager = new TaskManager(resolvedPath);
   } catch (error) {
-    console.error(chalk.red(`Failed to initialize TaskManager: ${formatCliError(normalizeError(error))}`));
+    console.error(chalk.red(formatCliError(error as Error)));
     process.exit(1);
   }
 });
@@ -51,15 +49,8 @@ program
       let project: Project;
       let task: Task | undefined;
       try {
-        const projectResponse = await taskManager.readProject(projectId);
-        if ('error' in projectResponse) {
-          throw projectResponse.error;
-        }
-        if (projectResponse.status !== "success") {
-          throw createError(ErrorCode.InvalidResponseFormat, "Unexpected response format from TaskManager");
-        }
-        project = projectResponse.data;
-        task = project.tasks.find(t => t.id === taskId);
+        project = await taskManager.readProject(projectId);
+        task = project.tasks.find((t: Task) => t.id === taskId);
 
         if (!task) {
           console.error(chalk.red(`Task ${chalk.bold(taskId)} not found in project ${chalk.bold(projectId)}.`));
@@ -70,25 +61,8 @@ program
           process.exit(1);
         }
       } catch (error) {
-        const normalized = normalizeError(error);
-        if (normalized.code === ErrorCode.ProjectNotFound) {
-          console.error(chalk.red(`Project ${chalk.bold(projectId)} not found.`));
-          // Optionally list available projects
-          const projectsResponse = await taskManager.listProjects();
-          if ('error' in projectsResponse) {
-            throw projectsResponse.error;
-          }
-          if (projectsResponse.status === "success" && projectsResponse.data.projects.length > 0) {
-            console.log(chalk.yellow('Available projects:'));
-            projectsResponse.data.projects.forEach((p: { projectId: string; initialPrompt: string }) => {
-              console.log(`  - ${p.projectId}: ${p.initialPrompt.substring(0, 50)}${p.initialPrompt.length > 50 ? '...' : ''}`);
-            });
-          } else {
-            console.log(chalk.yellow('No projects available.'));
-          }
-          process.exit(1);
-        }
-        throw error; // Re-throw other errors
+        console.error(chalk.red(formatCliError(error as Error)));
+        process.exit(1);
       }
 
       // Pre-check task status if not using force
@@ -104,22 +78,12 @@ program
       }
 
       // Attempt to approve the task
-      const approvalResponse = await taskManager.approveTaskCompletion(projectId, taskId);
-      if ('error' in approvalResponse) {
-        throw approvalResponse.error;
-      }
+      const approvedTask = await taskManager.approveTaskCompletion(projectId, taskId);
       console.log(chalk.green(`✅ Task ${chalk.bold(taskId)} in project ${chalk.bold(projectId)} has been approved.`));
 
       // Fetch updated project data for display
-      const updatedProjectResponse = await taskManager.readProject(projectId);
-      if ('error' in updatedProjectResponse) {
-        throw updatedProjectResponse.error;
-      }
-      if (updatedProjectResponse.status !== "success") {
-        throw createError(ErrorCode.InvalidResponseFormat, "Unexpected response format from TaskManager");
-      }
-      const updatedProject = updatedProjectResponse.data;
-      const updatedTask = updatedProject.tasks.find(t => t.id === taskId);
+      const updatedProject = await taskManager.readProject(projectId);
+      const updatedTask = updatedProject.tasks.find((t: Task) => t.id === taskId);
 
       // Show task info
       if (updatedTask) {
@@ -139,8 +103,8 @@ program
 
       // Show progress info
       const totalTasks = updatedProject.tasks.length;
-      const completedTasks = updatedProject.tasks.filter(t => t.status === "done").length;
-      const approvedTasks = updatedProject.tasks.filter(t => t.approved).length;
+      const completedTasks = updatedProject.tasks.filter((t: Task) => t.status === "done").length;
+      const approvedTasks = updatedProject.tasks.filter((t: Task) => t.approved).length;
 
       console.log(chalk.cyan(`\n📊 Progress: ${chalk.bold(`${approvedTasks}/${completedTasks}/${totalTasks}`)} (approved/completed/total)`));
 
@@ -160,16 +124,7 @@ program
         }
       }
     } catch (error) {
-      const normalized = normalizeError(error);
-      if (normalized.code === ErrorCode.TaskNotDone) {
-        console.error(chalk.red(`Approval failed: Task ${chalk.bold(taskId)} is not marked as 'done' according to the Task Manager.`));
-        // Just show the error message which should contain all relevant information
-        // No need to try to access status from details since it's not guaranteed to be there
-        console.error(chalk.red(normalized.message));
-        process.exit(1);
-      }
-      // Handle other errors generally
-      console.error(chalk.red(formatCliError(normalized)));
+      console.error(chalk.red(formatCliError(error as Error)));
       process.exit(1);
     }
   });
@@ -185,34 +140,10 @@ program
       // First, verify the project exists and get its details
       let project: Project;
       try {
-        const projectResponse = await taskManager.readProject(projectId);
-        if ('error' in projectResponse) {
-          throw projectResponse.error;
-        }
-        if (projectResponse.status !== "success") {
-          throw createError(ErrorCode.InvalidResponseFormat, "Unexpected response format from TaskManager");
-        }
-        project = projectResponse.data;
+        project = await taskManager.readProject(projectId);
       } catch (error) {
-        const normalized = normalizeError(error);
-        if (normalized.code === ErrorCode.ProjectNotFound) {
-          console.error(chalk.red(`Project ${chalk.bold(projectId)} not found.`));
-          // Optionally list available projects
-          const projectsResponse = await taskManager.listProjects();
-          if ('error' in projectsResponse) {
-            throw projectsResponse.error;
-          }
-          if (projectsResponse.status === "success" && projectsResponse.data.projects.length > 0) {
-            console.log(chalk.yellow('Available projects:'));
-            projectsResponse.data.projects.forEach((p: { projectId: string; initialPrompt: string }) => {
-              console.log(`  - ${p.projectId}: ${p.initialPrompt.substring(0, 50)}${p.initialPrompt.length > 50 ? '...' : ''}`);
-            });
-          } else {
-            console.log(chalk.yellow('No projects available.'));
-          }
-          process.exit(1);
-        }
-        throw error; // Re-throw other errors
+        console.error(chalk.red(formatCliError(error as Error)));
+        process.exit(1);
       }
 
       // Pre-check project status
@@ -243,21 +174,11 @@ program
       }
 
       // Attempt to finalize the project
-      const finalizationResponse = await taskManager.approveProjectCompletion(projectId);
-      if ('error' in finalizationResponse) {
-        throw finalizationResponse.error;
-      }
+      await taskManager.approveProjectCompletion(projectId);
       console.log(chalk.green(`✅ Project ${chalk.bold(projectId)} has been approved and marked as complete.`));
 
       // Fetch updated project data for display
-      const updatedProjectResponse = await taskManager.readProject(projectId);
-      if ('error' in updatedProjectResponse) {
-        throw updatedProjectResponse.error;
-      }
-      if (updatedProjectResponse.status !== "success") {
-        throw createError(ErrorCode.InvalidResponseFormat, "Unexpected response format from TaskManager");
-      }
-      const updatedProject = updatedProjectResponse.data;
+      const updatedProject = await taskManager.readProject(projectId);
 
       // Show project info
       console.log(chalk.cyan('\n📋 Project details:'));
@@ -283,23 +204,7 @@ program
       console.log(chalk.blue(`  taskqueue list -p ${projectId}`));
 
     } catch (error) {
-      const normalized = normalizeError(error);
-      if (normalized.code === ErrorCode.TasksNotAllDone) {
-        console.error(chalk.red(`Finalization failed: Not all tasks in project ${chalk.bold(projectId)} are marked as done.`));
-        // We already showed pending tasks in pre-check, no need to show again
-        process.exit(1);
-      }
-      if (normalized.code === ErrorCode.TasksNotAllApproved) {
-        console.error(chalk.red(`Finalization failed: Not all completed tasks in project ${chalk.bold(projectId)} are approved yet.`));
-        // We already showed unapproved tasks in pre-check, no need to show again
-        process.exit(1);
-      }
-      if (normalized.code === ErrorCode.ProjectAlreadyCompleted) {
-        console.log(chalk.yellow(`Project ${chalk.bold(projectId)} was already marked as completed.`));
-        process.exit(0);
-      }
-      // Handle other errors generally
-      console.error(chalk.red(formatCliError(normalized)));
+      console.error(chalk.red(formatCliError(error as Error)));
       process.exit(1);
     }
   });
@@ -325,74 +230,49 @@ program
         // Show details for a specific project
         const projectId = options.project;
         try {
-            const projectResponse = await taskManager.readProject(projectId);
-            if ('error' in projectResponse) throw projectResponse.error;
-            if (projectResponse.status !== "success") throw createError(ErrorCode.InvalidResponseFormat, "Unexpected response");
-            
-            const project = projectResponse.data;
+          const project = await taskManager.readProject(projectId);
 
-            // Filter tasks based on state if provided
-            const tasksToList = filterState
-              ? project.tasks.filter((task) => {
-                  if (filterState === 'open') return task.status !== 'done';
-                  if (filterState === 'pending_approval') return task.status === 'done' && !task.approved;
-                  if (filterState === 'completed') return task.status === 'done' && task.approved;
-                  return true; // Should not happen
-                })
-              : project.tasks;
+          // Filter tasks based on state if provided
+          const tasksToList = filterState
+            ? project.tasks.filter((task: Task) => {
+                if (filterState === 'open') return !task.approved;
+                if (filterState === 'pending_approval') return task.status === 'done' && !task.approved;
+                if (filterState === 'completed') return task.status === 'done' && task.approved;
+                return true; // Should not happen
+              })
+            : project.tasks;
 
-            // Use the formatter for the progress table - it now includes the header
-            const projectForTableDisplay = { ...project, tasks: tasksToList };
-            console.log(formatTaskProgressTable(projectForTableDisplay));
+          // Use the formatter for the progress table - it now includes the header
+          const projectForTableDisplay = { ...project, tasks: tasksToList };
+          console.log(formatTaskProgressTable(projectForTableDisplay));
 
-            if (tasksToList.length === 0) {
-               console.log(chalk.yellow(`\nNo tasks found${filterState ? ` matching state '${filterState}'` : ''} in project ${projectId}.`));
-            } else if (filterState) {
-               console.log(chalk.dim(`(Filtered by state: ${filterState})`));
-            }
+          if (tasksToList.length === 0) {
+            console.log(chalk.yellow(`\nNo tasks found${filterState ? ` matching state '${filterState}'` : ''} in project ${projectId}.`));
+          } else if (filterState) {
+            console.log(chalk.dim(`(Filtered by state: ${filterState})`));
+          }
 
-        } catch (error: unknown) {
-            const normalized = normalizeError(error);
-            if (normalized.code === ErrorCode.ProjectNotFound) {
-                 console.error(chalk.red(`Project ${chalk.bold(projectId)} not found.`));
-                 // Optionally list available projects
-                 const projectsResponse = await taskManager.listProjects(); // Fetch summaries
-                 if (projectsResponse.status === "success" && projectsResponse.data.projects.length > 0) {
-                    console.log(chalk.yellow('Available projects:'));
-                    projectsResponse.data.projects.forEach((p: { projectId: string; initialPrompt: string }) => {
-                         console.log(`  - ${p.projectId}: ${p.initialPrompt.substring(0, 50)}${p.initialPrompt.length > 50 ? '...' : ''}`);
-                    });
-                 } else if (projectsResponse.status === "success"){
-                     console.log(chalk.yellow('No projects available.'));
-                 }
-                 // else: error fetching list, handled by outer catch
-                 process.exit(1);
-            } else {
-                console.error(chalk.red(formatCliError(normalized)));
-                process.exit(1);
-            }
+        } catch (error) {
+          console.error(chalk.red(formatCliError(error as Error)));
+          process.exit(1);
         }
       } else {
         // List all projects, potentially filtered
-        const projectsSummaryResponse = await taskManager.listProjects(filterState);
-        if ('error' in projectsSummaryResponse) throw projectsSummaryResponse.error;
-        if (projectsSummaryResponse.status !== "success") throw createError(ErrorCode.InvalidResponseFormat, "Unexpected response");
+        const projects = await taskManager.listProjects(filterState);
 
-        const projectSummaries = projectsSummaryResponse.data.projects;
-
-        if (projectSummaries.length === 0) {
+        if (projects.projects.length === 0) {
           console.log(chalk.yellow(`No projects found${filterState ? ` matching state '${filterState}'` : ''}.`));
           return;
         }
 
         // Use the formatter directly with the summary data
-        console.log(chalk.cyan(formatProjectsList(projectSummaries)));
+        console.log(chalk.cyan(formatProjectsList(projects.projects)));
         if (filterState) {
           console.log(chalk.dim(`(Filtered by state: ${filterState})`));
         }
       }
     } catch (error) {
-      console.error(chalk.red(formatCliError(normalizeError(error))));
+      console.error(chalk.red(formatCliError(error as Error)));
       process.exit(1);
     }
   });
@@ -407,57 +287,33 @@ program
   .action(async (options) => {    
     try {
       console.log(chalk.blue(`Generating project plan from prompt...`));
-      console.log(options.attachment);
 
       // Pass attachment filenames directly to the server
-      const response = await taskManager.generateProjectPlan({
+      const result = await taskManager.generateProjectPlan({
         prompt: options.prompt,
         provider: options.provider,
         model: options.model,
         attachments: options.attachment
       });
 
-      if ('error' in response) {
-        throw response.error;
-      }
-
-      if (response.status !== "success") {
-        throw createError(
-          ErrorCode.InvalidResponseFormat,
-          "Unexpected response format from TaskManager"
-        );
-      }
-
-      const data = response.data as {
-        projectId: string;
-        totalTasks: number;
-        tasks: Array<{
-          id: string;
-          title: string;
-          description: string;
-        }>;
-        message?: string;
-      };
-
       // Display the results
       console.log(chalk.green(`✅ Project plan generated successfully!`));
       console.log(chalk.cyan('\n📋 Project details:'));
-      console.log(`  - ${chalk.bold('Project ID:')} ${data.projectId}`);
-      console.log(`  - ${chalk.bold('Total Tasks:')} ${data.totalTasks}`);
+      console.log(`  - ${chalk.bold('Project ID:')} ${result.projectId}`);
+      console.log(`  - ${chalk.bold('Total Tasks:')} ${result.totalTasks}`);
       
       console.log(chalk.cyan('\n📝 Tasks:'));
-      data.tasks.forEach((task) => {
+      result.tasks.forEach((task) => {
         console.log(`\n  ${chalk.bold(task.id)}:`);
         console.log(`    Title: ${task.title}`);
         console.log(`    Description: ${task.description}`);
       });
 
-      if (data.message) {
-        console.log(`\n${data.message}`);
+      if (result.message) {
+        console.log(`\n${result.message}`);
       }
-    } catch (err: unknown) {
-        const normalized = normalizeError(err);
-        console.error(`Error: ${chalk.red(formatCliError(normalized))}`);
+    } catch (error) {
+      console.error(chalk.red(formatCliError(error as Error)));
       process.exit(1);
     }
   });

@@ -1,8 +1,8 @@
 import { Tool } from "@modelcontextprotocol/sdk/types.js";
 import { TaskManager } from "./TaskManager.js";
-import { ErrorCode } from "../types/index.js";
-import { createError, normalizeError } from "../utils/errors.js";
 import { toolExecutorMap } from "./toolExecutors.js";
+import { AppError, AppErrorCode } from "../types/errors.js";
+import { McpError, CallToolResult, ErrorCode } from "@modelcontextprotocol/sdk/types.js";
 
 // ---------------------- PROJECT TOOLS ----------------------
 
@@ -261,12 +261,16 @@ const readTaskTool: Tool = {
   inputSchema: {
     type: "object",
     properties: {
+      projectId: {
+        type: "string",
+        description: "The ID of the project containing the task (e.g., proj-1).",
+      },
       taskId: {
         type: "string",
         description: "The ID of the task to read (e.g., task-1).",
       },
     },
-    required: ["taskId"],
+    required: ["projectId", "taskId"],
   },
 };
 
@@ -443,35 +447,56 @@ export const ALL_TOOLS: Tool[] = [
 ];
 
 /**
- * Executes a tool with error handling and standardized response formatting.
- * Uses the toolExecutorMap to look up and execute the appropriate tool executor.
- * 
- * @param toolName The name of the tool to execute
- * @param args The arguments to pass to the tool
- * @param taskManager The TaskManager instance to use
- * @returns A promise that resolves to the tool's response
- * @throws {Error} If the tool is not found or if execution fails
+ * Finds and executes a tool, handling error classification.
+ * - Throws errors tagged with `jsonRpcCode` for protocol issues (e.g., Not Found, Invalid Params).
+ * - Catches other errors (tool execution failures) and returns the standard MCP error result format.
  */
-export async function executeToolWithErrorHandling(
+export async function executeToolAndHandleErrors(
   toolName: string,
   args: Record<string, unknown>,
   taskManager: TaskManager
-): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
+): Promise<CallToolResult> {
+  const executor = toolExecutorMap.get(toolName);
+
+  // 1. Handle "Tool Not Found"
+  if (!executor) {
+    const protocolError = new McpError(ErrorCode.MethodNotFound, `Unknown tool: ${toolName}`);
+    throw protocolError; // Throw McpError for SDK to handle
+  }
+
   try {
-    const executor = toolExecutorMap.get(toolName);
-    if (!executor) {
-      throw createError(
-        ErrorCode.InvalidArgument,
-        `Unknown tool: ${toolName}`
-      );
+    // 2. Execute the tool - Validation errors (protocol) or TaskManager errors (execution) might be thrown
+    const resultData = await executor.execute(taskManager, args);
+
+    // 3. Format successful execution result
+    return {
+      content: [{ type: "text", text: JSON.stringify(resultData, null, 2) }]
+    };
+
+  } catch (error: AppError | unknown) {
+    // 4a. Handle protocol errors (missing params, invalid args)
+    if (error instanceof AppError) {
+      if ([
+          AppErrorCode.MissingParameter, 
+          AppErrorCode.InvalidArgument
+        ].includes(error.code as AppErrorCode)
+      ) {
+        throw new McpError(ErrorCode.InvalidParams, error.message);
+      }
     }
 
-    return await executor.execute(taskManager, args);
-  } catch (error) {
-    const standardError = normalizeError(error);
+    // 4b. Handle all other errors as tool execution failures
+    console.error(`Tool Execution Error [${toolName}]:`, error);
+
+    // Get error message, handling both Error objects and unknown error types
+    const errorMessage = error instanceof Error 
+      ? error.message 
+      : String(error);
+
+    // Format and RETURN the error within the 'result' field structure.
     return {
-      content: [{ type: "text", text: `Error: ${standardError.message}` }],
-      isError: true,
+      content: [{ type: "text", text: `Tool execution failed: ${errorMessage}` }],
+      isError: true // Mark as an execution error as per MCP spec
     };
   }
 }

@@ -1,6 +1,7 @@
 import Table from 'cli-table3'; // Import the library
 import chalk from 'chalk'; // Import chalk for consistent styling
-import { ListProjectsSuccessData, Project } from "../types/index.js";
+import { ListProjectsSuccessData } from "../types/response.js";
+import { Project } from "../types/data.js";
 
 /**
  * Formats the project details and a progress table for its tasks using cli-table3.

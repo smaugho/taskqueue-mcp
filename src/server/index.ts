@@ -2,15 +2,15 @@
 
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
-import { TaskManager } from "./src/server/TaskManager.js";
-import { ALL_TOOLS, executeToolWithErrorHandling } from "./src/server/tools.js";
+import { TaskManager } from "./TaskManager.js";
+import { ALL_TOOLS, executeToolAndHandleErrors } from "./tools.js";
 import { ListToolsRequestSchema, CallToolRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 
 // Create server with capabilities BEFORE setting up handlers
 const server = new Server(
   {
     name: "task-manager-server",
-    version: "1.3.4"
+    version: "1.4.0"
   },
   {
     capabilities: {
@@ -21,12 +21,6 @@ const server = new Server(
     }
   }
 );
-
-// Debug logging
-console.error('Server starting with env:', {
-  TASK_MANAGER_FILE_PATH: process.env.TASK_MANAGER_FILE_PATH,
-  NODE_ENV: process.env.NODE_ENV
-});
 
 // Create task manager instance
 const taskManager = new TaskManager();
@@ -39,11 +33,16 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
 });
 
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
-  return executeToolWithErrorHandling(
+  // Directly call the handler. It either returns a result object (success or isError:true)
+  // OR it throws a tagged protocol error.
+  return await executeToolAndHandleErrors(
     request.params.name,
     request.params.arguments || {},
     taskManager
   );
+  // SDK automatically handles:
+  // - Wrapping the returned value (success data or isError:true object) in `result: { ... }`
+  // - Catching re-thrown protocol errors and formatting the top-level `error: { ... }`
 });
 
 // Start the server

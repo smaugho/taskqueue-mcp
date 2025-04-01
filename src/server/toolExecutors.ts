@@ -1,11 +1,10 @@
 import { TaskManager } from "./TaskManager.js";
-import { ErrorCode } from "../types/index.js";
-import { createError } from "../utils/errors.js";
+import { AppError, AppErrorCode } from "../types/errors.js";
 
 /**
  * Interface defining the contract for tool executors.
  * Each tool executor is responsible for executing a specific tool's logic
- * and handling its input validation and response formatting.
+ * and handling its input validation.
  */
 interface ToolExecutor {
   /** The name of the tool this executor handles */
@@ -15,32 +14,25 @@ interface ToolExecutor {
    * Executes the tool's logic with the given arguments
    * @param taskManager The TaskManager instance to use for task-related operations
    * @param args The arguments passed to the tool as a key-value record
-   * @returns A promise that resolves to the tool's response, containing an array of text content
+   * @returns A promise that resolves to the raw data from TaskManager
    */
   execute: (
     taskManager: TaskManager,
     args: Record<string, unknown>
-  ) => Promise<{
-    content: Array<{ type: "text"; text: string }>;
-    isError?: boolean;
-  }>;
+  ) => Promise<unknown>;
 }
 
 // ---------------------- UTILITY FUNCTIONS ----------------------
 
 /**
- * Formats any data into the standard tool response format.
- */
-function formatToolResponse(data: unknown): { content: Array<{ type: "text"; text: string }> } {
-  return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
-}
-
-/**
- * Throws an error if a required parameter is not present or not a string.
+ * Throws an AppError if a required parameter is not present or not a string.
  */
 function validateRequiredStringParam(param: unknown, paramName: string): string {
   if (typeof param !== "string" || !param) {
-    throw createError(ErrorCode.MissingParameter, `Missing or invalid required parameter: ${paramName}`);
+    throw new AppError(
+      `Invalid or missing required parameter: ${paramName} (Expected string)`,
+      AppErrorCode.MissingParameter
+    );
   }
   return param;
 }
@@ -60,11 +52,14 @@ function validateTaskId(taskId: unknown): string {
 }
 
 /**
- * Throws an error if tasks is not defined or not an array.
+ * Throws an AppError if tasks is not defined or not an array.
  */
 function validateTaskList(tasks: unknown): void {
   if (!Array.isArray(tasks)) {
-    throw createError(ErrorCode.MissingParameter, "Missing required parameter: tasks");
+    throw new AppError(
+      "Invalid or missing required parameter: tasks (Expected array)",
+      AppErrorCode.InvalidArgument
+    );
   }
 }
 
@@ -77,9 +72,9 @@ function validateOptionalStateParam(
 ): string | undefined {
   if (state === undefined) return undefined;
   if (typeof state === "string" && validStates.includes(state)) return state;
-  throw createError(
-    ErrorCode.InvalidArgument,
-    `Invalid state parameter. Must be one of: ${validStates.join(", ")}`
+  throw new AppError(
+    `Invalid state parameter. Must be one of: ${validStates.join(", ")}`,
+    AppErrorCode.InvalidState
   );
 }
 
@@ -100,9 +95,9 @@ function validateTaskObjects(
 
   return taskArray.map((task, index) => {
     if (!task || typeof task !== "object") {
-      throw createError(
-        ErrorCode.InvalidArgument,
-        `${errorPrefix || "Task"} at index ${index} must be an object.`
+      throw new AppError(
+        `${errorPrefix || "Task"} at index ${index} must be an object`,
+        AppErrorCode.InvalidArgument
       );
     }
 
@@ -131,6 +126,7 @@ export const toolExecutorMap: Map<string, ToolExecutor> = new Map();
 const listProjectsToolExecutor: ToolExecutor = {
   name: "list_projects",
   async execute(taskManager, args) {
+    // 1. Argument Validation
     const state = validateOptionalStateParam(args.state, [
       "open",
       "pending_approval",
@@ -138,8 +134,11 @@ const listProjectsToolExecutor: ToolExecutor = {
       "all",
     ]);
 
-    const result = await taskManager.listProjects(state as any);
-    return formatToolResponse(result);
+    // 2. Core Logic Execution
+    const resultData = await taskManager.listProjects(state as any);
+
+    // 3. Return raw success data
+    return resultData;
   },
 };
 toolExecutorMap.set(listProjectsToolExecutor.name, listProjectsToolExecutor);
@@ -151,19 +150,31 @@ const createProjectToolExecutor: ToolExecutor = {
   name: "create_project",
   async execute(taskManager, args) {
     const initialPrompt = validateRequiredStringParam(args.initialPrompt, "initialPrompt");
-    const validatedTasks = validateTaskObjects(args.tasks, "Task");
-
-    const projectPlan = args.projectPlan ? String(args.projectPlan) : undefined;
+    const validatedTasks = validateTaskObjects(args.tasks);
+    const projectPlan = args.projectPlan !== undefined ? String(args.projectPlan) : undefined;
     const autoApprove = args.autoApprove === true;
 
-    const result = await taskManager.createProject(
+    if (args.projectPlan !== undefined && typeof args.projectPlan !== 'string') {
+      throw new AppError(
+        "Invalid type for optional parameter 'projectPlan' (Expected string)",
+        AppErrorCode.InvalidArgument
+      );
+    }
+    if (args.autoApprove !== undefined && typeof args.autoApprove !== 'boolean') {
+      throw new AppError(
+        "Invalid type for optional parameter 'autoApprove' (Expected boolean)",
+        AppErrorCode.InvalidArgument
+      );
+    }
+
+    const resultData = await taskManager.createProject(
       initialPrompt,
       validatedTasks,
       projectPlan,
       autoApprove
     );
 
-    return formatToolResponse(result);
+    return resultData;
   },
 };
 toolExecutorMap.set(createProjectToolExecutor.name, createProjectToolExecutor);
@@ -174,57 +185,41 @@ toolExecutorMap.set(createProjectToolExecutor.name, createProjectToolExecutor);
 const generateProjectPlanToolExecutor: ToolExecutor = {
   name: "generate_project_plan",
   async execute(taskManager, args) {
-    // Validate required parameters
+    // 1. Argument Validation
     const prompt = validateRequiredStringParam(args.prompt, "prompt");
     const provider = validateRequiredStringParam(args.provider, "provider");
     const model = validateRequiredStringParam(args.model, "model");
-
-    // Validate provider is one of the allowed values
-    if (!["openai", "google", "deepseek"].includes(provider)) {
-      throw createError(
-        ErrorCode.InvalidArgument,
-        `Invalid provider: ${provider}. Must be one of: openai, google, deepseek`
-      );
-    }
-
-    // Check that the corresponding API key is set
-    const envKey = `${provider.toUpperCase()}_API_KEY`;
-    if (!process.env[envKey]) {
-      throw createError(
-        ErrorCode.ConfigurationError,
-        `Missing ${envKey} environment variable required for ${provider}`
-      );
-    }
 
     // Validate optional attachments
     let attachments: string[] = [];
     if (args.attachments !== undefined) {
       if (!Array.isArray(args.attachments)) {
-        throw createError(
-          ErrorCode.InvalidArgument,
-          "Invalid attachments: must be an array of strings"
+        throw new AppError(
+          "Invalid attachments: must be an array of strings",
+          AppErrorCode.InvalidArgument
         );
       }
       attachments = args.attachments.map((att, index) => {
         if (typeof att !== "string") {
-          throw createError(
-            ErrorCode.InvalidArgument,
-            `Invalid attachment at index ${index}: must be a string`
+          throw new AppError(
+            `Invalid attachment at index ${index}: must be a string`,
+            AppErrorCode.InvalidArgument
           );
         }
         return att;
       });
     }
 
-    // Call the TaskManager method to generate the plan
-    const result = await taskManager.generateProjectPlan({
+    // 2. Core Logic Execution
+    const resultData = await taskManager.generateProjectPlan({
       prompt,
       provider,
       model,
       attachments,
     });
 
-    return formatToolResponse(result);
+    // 3. Return raw success data
+    return resultData;
   },
 };
 toolExecutorMap.set(generateProjectPlanToolExecutor.name, generateProjectPlanToolExecutor);
@@ -235,9 +230,14 @@ toolExecutorMap.set(generateProjectPlanToolExecutor.name, generateProjectPlanToo
 const getNextTaskToolExecutor: ToolExecutor = {
   name: "get_next_task",
   async execute(taskManager, args) {
+    // 1. Argument Validation
     const projectId = validateProjectId(args.projectId);
-    const result = await taskManager.getNextTask(projectId);
-    return formatToolResponse(result);
+
+    // 2. Core Logic Execution
+    const resultData = await taskManager.getNextTask(projectId);
+
+    // 3. Return raw success data
+    return resultData;
   },
 };
 toolExecutorMap.set(getNextTaskToolExecutor.name, getNextTaskToolExecutor);
@@ -250,10 +250,8 @@ const updateTaskToolExecutor: ToolExecutor = {
   async execute(taskManager, args) {
     const projectId = validateProjectId(args.projectId);
     const taskId = validateTaskId(args.taskId);
-
     const updates: Record<string, string> = {};
 
-    // Optional fields
     if (args.title !== undefined) {
       updates.title = validateRequiredStringParam(args.title, "title");
     }
@@ -262,33 +260,32 @@ const updateTaskToolExecutor: ToolExecutor = {
     }
     if (args.toolRecommendations !== undefined) {
       if (typeof args.toolRecommendations !== "string") {
-        throw createError(
-          ErrorCode.InvalidArgument,
-          "Invalid toolRecommendations: must be a string"
+        throw new AppError(
+          "Invalid toolRecommendations: must be a string",
+          AppErrorCode.InvalidArgument
         );
       }
       updates.toolRecommendations = args.toolRecommendations;
     }
     if (args.ruleRecommendations !== undefined) {
       if (typeof args.ruleRecommendations !== "string") {
-        throw createError(
-          ErrorCode.InvalidArgument,
-          "Invalid ruleRecommendations: must be a string"
+        throw new AppError(
+          "Invalid ruleRecommendations: must be a string",
+          AppErrorCode.InvalidArgument
         );
       }
       updates.ruleRecommendations = args.ruleRecommendations;
     }
 
-    // Status transitions
     if (args.status !== undefined) {
       const status = args.status;
       if (
         typeof status !== "string" ||
         !["not started", "in progress", "done"].includes(status)
       ) {
-        throw createError(
-          ErrorCode.InvalidArgument,
-          "Invalid status: must be one of 'not started', 'in progress', 'done'"
+        throw new AppError(
+          "Invalid status: must be one of 'not started', 'in progress', 'done'",
+          AppErrorCode.InvalidArgument
         );
       }
       if (status === "done") {
@@ -300,8 +297,8 @@ const updateTaskToolExecutor: ToolExecutor = {
       updates.status = status;
     }
 
-    const result = await taskManager.updateTask(projectId, taskId, updates);
-    return formatToolResponse(result);
+    const resultData = await taskManager.updateTask(projectId, taskId, updates);
+    return resultData;
   },
 };
 toolExecutorMap.set(updateTaskToolExecutor.name, updateTaskToolExecutor);
@@ -312,9 +309,14 @@ toolExecutorMap.set(updateTaskToolExecutor.name, updateTaskToolExecutor);
 const readProjectToolExecutor: ToolExecutor = {
   name: "read_project",
   async execute(taskManager, args) {
+    // 1. Argument Validation
     const projectId = validateProjectId(args.projectId);
-    const result = await taskManager.readProject(projectId);
-    return formatToolResponse(result);
+
+    // 2. Core Logic Execution
+    const resultData = await taskManager.readProject(projectId);
+
+    // 3. Return raw success data
+    return resultData;
   },
 };
 toolExecutorMap.set(readProjectToolExecutor.name, readProjectToolExecutor);
@@ -331,20 +333,19 @@ const deleteProjectToolExecutor: ToolExecutor = {
       (p) => p.projectId === projectId
     );
     if (projectIndex === -1) {
-      return formatToolResponse({
-        status: "error",
-        message: "Project not found",
-      });
+      throw new AppError(
+        `Project not found: ${projectId}`,
+        AppErrorCode.ProjectNotFound
+      );
     }
 
-    // Remove project and save
     taskManager["data"].projects.splice(projectIndex, 1);
     await taskManager["saveTasks"]();
 
-    return formatToolResponse({
+    return {
       status: "project_deleted",
       message: `Project ${projectId} has been deleted.`,
-    });
+    };
   },
 };
 toolExecutorMap.set(deleteProjectToolExecutor.name, deleteProjectToolExecutor);
@@ -355,11 +356,15 @@ toolExecutorMap.set(deleteProjectToolExecutor.name, deleteProjectToolExecutor);
 const addTasksToProjectToolExecutor: ToolExecutor = {
   name: "add_tasks_to_project",
   async execute(taskManager, args) {
+    // 1. Argument Validation
     const projectId = validateProjectId(args.projectId);
-    const tasks = validateTaskObjects(args.tasks, "Task");
+    const tasks = validateTaskObjects(args.tasks);
 
-    const result = await taskManager.addTasksToProject(projectId, tasks);
-    return formatToolResponse(result);
+    // 2. Core Logic Execution
+    const resultData = await taskManager.addTasksToProject(projectId, tasks);
+
+    // 3. Return raw success data
+    return resultData;
   },
 };
 toolExecutorMap.set(addTasksToProjectToolExecutor.name, addTasksToProjectToolExecutor);
@@ -370,9 +375,14 @@ toolExecutorMap.set(addTasksToProjectToolExecutor.name, addTasksToProjectToolExe
 const finalizeProjectToolExecutor: ToolExecutor = {
   name: "finalize_project",
   async execute(taskManager, args) {
+    // 1. Argument Validation
     const projectId = validateProjectId(args.projectId);
-    const result = await taskManager.approveProjectCompletion(projectId);
-    return formatToolResponse(result);
+
+    // 2. Core Logic Execution
+    const resultData = await taskManager.approveProjectCompletion(projectId);
+
+    // 3. Return raw success data
+    return resultData;
   },
 };
 toolExecutorMap.set(finalizeProjectToolExecutor.name, finalizeProjectToolExecutor);
@@ -383,6 +393,7 @@ toolExecutorMap.set(finalizeProjectToolExecutor.name, finalizeProjectToolExecuto
 const listTasksToolExecutor: ToolExecutor = {
   name: "list_tasks",
   async execute(taskManager, args) {
+    // 1. Argument Validation
     const projectId = args.projectId !== undefined ? validateProjectId(args.projectId) : undefined;
     const state = validateOptionalStateParam(args.state, [
       "open",
@@ -391,8 +402,11 @@ const listTasksToolExecutor: ToolExecutor = {
       "all",
     ]);
 
-    const result = await taskManager.listTasks(projectId, state as any);
-    return formatToolResponse(result);
+    // 2. Core Logic Execution
+    const resultData = await taskManager.listTasks(projectId, state as any);
+
+    // 3. Return raw success data
+    return resultData;
   },
 };
 toolExecutorMap.set(listTasksToolExecutor.name, listTasksToolExecutor);
@@ -403,9 +417,15 @@ toolExecutorMap.set(listTasksToolExecutor.name, listTasksToolExecutor);
 const readTaskToolExecutor: ToolExecutor = {
   name: "read_task",
   async execute(taskManager, args) {
+    // 1. Argument Validation
+    const projectId = validateProjectId(args.projectId);
     const taskId = validateTaskId(args.taskId);
-    const result = await taskManager.openTaskDetails(taskId);
-    return formatToolResponse(result);
+
+    // 2. Core Logic Execution
+    const resultData = await taskManager.openTaskDetails(projectId, taskId);
+
+    // 3. Return raw success data
+    return resultData;
   },
 };
 toolExecutorMap.set(readTaskToolExecutor.name, readTaskToolExecutor);
@@ -420,6 +440,19 @@ const createTaskToolExecutor: ToolExecutor = {
     const title = validateRequiredStringParam(args.title, "title");
     const description = validateRequiredStringParam(args.description, "description");
 
+    if (args.toolRecommendations !== undefined && typeof args.toolRecommendations !== "string") {
+      throw new AppError(
+        "Invalid type for optional parameter 'toolRecommendations' (Expected string)",
+        AppErrorCode.InvalidArgument
+      );
+    }
+    if (args.ruleRecommendations !== undefined && typeof args.ruleRecommendations !== "string") {
+      throw new AppError(
+        "Invalid type for optional parameter 'ruleRecommendations' (Expected string)",
+        AppErrorCode.InvalidArgument
+      );
+    }
+
     const singleTask = {
       title,
       description,
@@ -427,8 +460,8 @@ const createTaskToolExecutor: ToolExecutor = {
       ruleRecommendations: args.ruleRecommendations ? String(args.ruleRecommendations) : undefined,
     };
 
-    const result = await taskManager.addTasksToProject(projectId, [singleTask]);
-    return formatToolResponse(result);
+    const resultData = await taskManager.addTasksToProject(projectId, [singleTask]);
+    return resultData;
   },
 };
 toolExecutorMap.set(createTaskToolExecutor.name, createTaskToolExecutor);
@@ -439,11 +472,15 @@ toolExecutorMap.set(createTaskToolExecutor.name, createTaskToolExecutor);
 const deleteTaskToolExecutor: ToolExecutor = {
   name: "delete_task",
   async execute(taskManager, args) {
+    // 1. Argument Validation
     const projectId = validateProjectId(args.projectId);
     const taskId = validateTaskId(args.taskId);
 
-    const result = await taskManager.deleteTask(projectId, taskId);
-    return formatToolResponse(result);
+    // 2. Core Logic Execution
+    const resultData = await taskManager.deleteTask(projectId, taskId);
+
+    // 3. Return raw success data
+    return resultData;
   },
 };
 toolExecutorMap.set(deleteTaskToolExecutor.name, deleteTaskToolExecutor);
@@ -454,11 +491,15 @@ toolExecutorMap.set(deleteTaskToolExecutor.name, deleteTaskToolExecutor);
 const approveTaskToolExecutor: ToolExecutor = {
   name: "approve_task",
   async execute(taskManager, args) {
+    // 1. Argument Validation
     const projectId = validateProjectId(args.projectId);
     const taskId = validateTaskId(args.taskId);
 
-    const result = await taskManager.approveTaskCompletion(projectId, taskId);
-    return formatToolResponse(result);
+    // 2. Core Logic Execution
+    const resultData = await taskManager.approveTaskCompletion(projectId, taskId);
+
+    // 3. Return raw success data
+    return resultData;
   },
 };
 toolExecutorMap.set(approveTaskToolExecutor.name, approveTaskToolExecutor);

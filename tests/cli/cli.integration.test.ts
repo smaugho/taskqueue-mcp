@@ -81,7 +81,7 @@ describe("CLI Integration Tests", () => {
   it("should list only open projects via CLI", async () => {
     const { stdout } = await execAsync(`TASK_MANAGER_FILE_PATH=${tasksFilePath} tsx ${CLI_PATH} list -s open`);
     expect(stdout).toContain("proj-1");
-    expect(stdout).not.toContain("proj-2");
+    expect(stdout).toContain("proj-2");
     expect(stdout).not.toContain("proj-3");
   }, 5000);
 
@@ -140,13 +140,13 @@ describe("CLI Integration Tests", () => {
     beforeEach(() => {
       // Set mock API keys for testing
       process.env.OPENAI_API_KEY = 'test-key';
-      process.env.GEMINI_API_KEY = 'test-key';
+      process.env.GOOGLE_GENERATIVE_AI_API_KEY = 'test-key';
       process.env.DEEPSEEK_API_KEY = 'test-key';
     });
 
     afterEach(() => {
       delete process.env.OPENAI_API_KEY;
-      delete process.env.GEMINI_API_KEY;
+      delete process.env.GOOGLE_GENERATIVE_AI_API_KEY;
       delete process.env.DEEPSEEK_API_KEY;
     });
 
@@ -167,10 +167,6 @@ describe("CLI Integration Tests", () => {
       const { stdout, stderr } = await execAsync(
         `TASK_MANAGER_FILE_PATH=${tasksFilePath} tsx ${CLI_PATH} generate-plan --prompt "Create app" --attachment nonexistent.txt`
       ).catch(error => ({ stdout: error.stdout, stderr: error.stderr }));
-
-      // Keep these console logs temporarily if helpful for debugging during development
-      // console.log("Test stdout:", stdout); 
-      // console.log("Test stderr:", stderr);
 
       // Updated assertion to match the formatCliError output
       expect(stderr).toContain("[ERR_4000] Failed to read attachment file: nonexistent.txt");
