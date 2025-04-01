@@ -190,23 +190,6 @@ const generateProjectPlanToolExecutor: ToolExecutor = {
     const provider = validateRequiredStringParam(args.provider, "provider");
     const model = validateRequiredStringParam(args.model, "model");
 
-    // Validate provider is one of the allowed values
-    if (!["openai", "google", "deepseek"].includes(provider)) {
-      throw new AppError(
-        `Invalid provider: ${provider}. Must be one of: openai, google, deepseek`,
-        AppErrorCode.InvalidArgument
-      );
-    }
-
-    // Check that the corresponding API key is set
-    const envKey = provider === "google" ? "GOOGLE_GENERATIVE_AI_API_KEY" : `${provider.toUpperCase()}_API_KEY`;
-    if (!process.env[envKey]) {
-      throw new AppError(
-        `Missing ${envKey} environment variable required for ${provider}`,
-        AppErrorCode.ConfigurationError
-      );
-    }
-
     // Validate optional attachments
     let attachments: string[] = [];
     if (args.attachments !== undefined) {

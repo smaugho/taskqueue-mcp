@@ -232,18 +232,23 @@ export class TaskManager {
       });
       return await this.createProject(prompt, object.tasks, object.projectPlan);
     } catch (err: any) {
-      // Handle specific error cases
-      if (err.name === 'LoadAPIKeyError' || err.message.includes('API key is missing')) {
+      if (err.name === 'LoadAPIKeyError' || 
+          err.message.includes('API key is missing') || 
+          err.message.includes('You didn\'t provide an API key') ||
+          err.message.includes('unregistered callers') ||
+          (err.responseBody && err.responseBody.includes('Authentication Fails'))) {
         throw new AppError(
-          "Invalid or missing API key. Please check your environment variables.",
-          AppErrorCode.LLMConfigurationError,
+          `Missing API key environment variable required for ${provider}`,
+          AppErrorCode.ConfigurationError,
           err
         );
       }
-      if (err.message.includes('authentication') || err.message.includes('unauthorized')) {
+      // Check for invalid model errors by looking at the error code, type, and message
+      if ((err.data?.error?.code === 'model_not_found') && 
+          err.message.includes('model')) {
         throw new AppError(
-          "Authentication failed with the LLM provider. Please check your credentials.",
-          AppErrorCode.LLMConfigurationError,
+          `Invalid model: ${model} is not available for ${provider}`,
+          AppErrorCode.InvalidModel,
           err
         );
       }
@@ -584,6 +589,7 @@ export class TaskManager {
       initialPrompt: project.initialPrompt,
       projectPlan: project.projectPlan,
       completed: project.completed,
+      autoApprove: project.autoApprove,
       tasks: project.tasks,
     };
   }

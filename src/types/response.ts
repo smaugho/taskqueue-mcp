@@ -61,6 +61,7 @@ export interface ProjectCreationSuccessData {
     initialPrompt: string;
     projectPlan: string;
     completed: boolean;
+    autoApprove?: boolean;
     tasks: Task[];
   }
   

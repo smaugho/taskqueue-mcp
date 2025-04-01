@@ -24,7 +24,11 @@ export interface TestContext {
 /**
  * Sets up a test context with MCP client, transport, and temp directory
  */
-export async function setupTestContext(customFilePath?: string, skipFileInit: boolean = false): Promise<TestContext> {
+export async function setupTestContext(
+  customFilePath?: string,
+  skipFileInit: boolean = false,
+  customEnv?: Record<string, string>
+): Promise<TestContext> {
   // Create a unique temp directory for test
   const tempDir = path.join(os.tmpdir(), `mcp-client-integration-test-${Date.now()}-${Math.floor(Math.random() * 10000)}`);
   await fs.mkdir(tempDir, { recursive: true });
@@ -46,9 +50,12 @@ export async function setupTestContext(customFilePath?: string, skipFileInit: bo
       TASK_MANAGER_FILE_PATH: testFilePath,
       NODE_ENV: "test",
       DEBUG: "mcp:*",  // Enable MCP debug logging
-      // Pass API keys from the test runner's env to the child process env
-      OPENAI_API_KEY: process.env.OPENAI_API_KEY ?? '',
-      GOOGLE_GENERATIVE_AI_API_KEY: process.env.GOOGLE_GENERATIVE_AI_API_KEY ?? ''
+      // Use custom env if provided, otherwise use default API keys
+      ...(customEnv || {
+        OPENAI_API_KEY: process.env.OPENAI_API_KEY ?? '',
+        GOOGLE_GENERATIVE_AI_API_KEY: process.env.GOOGLE_GENERATIVE_AI_API_KEY ?? '',
+        DEEPSEEK_API_KEY: process.env.DEEPSEEK_API_KEY ?? ''
+      })
     }
   });
 

@@ -5,7 +5,8 @@ import {
   verifyCallToolResult,
   createTestProjectInFile,
   createTestTaskInFile,
-  TestContext
+  TestContext,
+  verifyToolExecutionError
 } from '../test-helpers.js';
 import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 
@@ -47,7 +48,7 @@ describe('read_project Tool', () => {
 
       // Verify project data
       const responseData = JSON.parse((result.content[0] as { text: string }).text);
-      expect(responseData.data).toMatchObject({
+      expect(responseData).toMatchObject({
         projectId: project.projectId,
         initialPrompt: "Test Project",
         completed: false,
@@ -86,7 +87,7 @@ describe('read_project Tool', () => {
 
       verifyCallToolResult(result);
       const responseData = JSON.parse((result.content[0] as { text: string }).text);
-      expect(responseData.data).toMatchObject({
+      expect(responseData).toMatchObject({
         projectId: project.projectId,
         initialPrompt: "Full Project",
         projectPlan: "Detailed project plan",
@@ -126,7 +127,7 @@ describe('read_project Tool', () => {
 
       verifyCallToolResult(result);
       const responseData = JSON.parse((result.content[0] as { text: string }).text);
-      expect(responseData.data).toMatchObject({
+      expect(responseData).toMatchObject({
         projectId: project.projectId,
         completed: true,
         tasks: [{
@@ -171,8 +172,8 @@ describe('read_project Tool', () => {
 
       verifyCallToolResult(result);
       const responseData = JSON.parse((result.content[0] as { text: string }).text);
-      expect(responseData.data.tasks).toHaveLength(3);
-      expect(responseData.data.tasks.map((t: any) => t.status)).toEqual([
+      expect(responseData.tasks).toHaveLength(3);
+      expect(responseData.tasks.map((t: any) => t.status)).toEqual([
         "not started",
         "in progress",
         "done"
@@ -189,9 +190,7 @@ describe('read_project Tool', () => {
         }
       }) as CallToolResult;
 
-      verifyCallToolResult(result);
-      expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain('Error: Project non_existent_project not found');
+      verifyToolExecutionError(result, /Project non_existent_project not found/);
     });
 
     it('should return error for invalid project ID format', async () => {
@@ -202,9 +201,7 @@ describe('read_project Tool', () => {
         }
       }) as CallToolResult;
 
-      verifyCallToolResult(result);
-      expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain('Error: Invalid project ID format');
+      verifyToolExecutionError(result, /Project invalid-format not found/);
     });
   });
 }); 

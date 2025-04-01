@@ -6,9 +6,11 @@ import {
   createTestProjectInFile,
   createTestTaskInFile,
   verifyTaskInFile,
-  TestContext
+  TestContext,
+  verifyProtocolError
 } from '../test-helpers.js';
 import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
+import { verifyToolExecutionError } from '../test-helpers.js';
 
 describe('update_task Tool', () => {
   let context: TestContext;
@@ -118,18 +120,19 @@ describe('update_task Tool', () => {
         title: "Test Task"
       });
 
-      const result = await context.client.callTool({
-        name: "update_task",
-        arguments: {
-          projectId: project.projectId,
-          taskId: task.id,
-          status: "invalid_status"  // Invalid status value
-        }
-      }) as CallToolResult;
-
-      verifyCallToolResult(result);
-      expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain('Error: Invalid status: must be one of');
+      try {
+        await context.client.callTool({
+          name: "update_task",
+          arguments: {
+            projectId: project.projectId,
+            taskId: task.id,
+            status: "invalid_status"  // Invalid status value
+          }
+        });
+        fail('Expected error was not thrown');
+      } catch (error) {
+        verifyProtocolError(error, -32602, "Invalid status: must be one of 'not started', 'in progress', 'done'");
+      }
     });
 
     it('should return error when marking task as done without completedDetails', async () => {
@@ -141,19 +144,20 @@ describe('update_task Tool', () => {
         status: "in progress"
       });
 
-      const result = await context.client.callTool({
-        name: "update_task",
-        arguments: {
-          projectId: project.projectId,
-          taskId: task.id,
-          status: "done"
-          // Missing required completedDetails
-        }
-      }) as CallToolResult;
-
-      verifyCallToolResult(result);
-      expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain('Error: Missing or invalid required parameter: completedDetails');
+      try {
+        await context.client.callTool({
+          name: "update_task",
+          arguments: {
+            projectId: project.projectId,
+            taskId: task.id,
+            status: "done"
+            // Missing required completedDetails
+          }
+        });
+        fail('Expected error was not thrown');
+      } catch (error) {
+        verifyProtocolError(error, -32602, "Invalid or missing required parameter: completedDetails (required when status = 'done') (Expected string)");
+      }
     });
 
     it('should return error for non-existent project', async () => {
@@ -166,9 +170,7 @@ describe('update_task Tool', () => {
         }
       }) as CallToolResult;
 
-      verifyCallToolResult(result);
-      expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain('Error: Project non_existent_project not found');
+      verifyToolExecutionError(result, /Project non_existent_project not found/);
     });
 
     it('should return error for non-existent task', async () => {
@@ -185,9 +187,7 @@ describe('update_task Tool', () => {
         }
       }) as CallToolResult;
 
-      verifyCallToolResult(result);
-      expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain('Error: Task non_existent_task not found');
+      verifyToolExecutionError(result, /Task non_existent_task not found/);
     });
 
     it('should return error when updating approved task', async () => {
@@ -210,9 +210,7 @@ describe('update_task Tool', () => {
         }
       }) as CallToolResult;
 
-      verifyCallToolResult(result);
-      expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain('Error: Cannot modify approved task');
+      verifyToolExecutionError(result, /Cannot modify an approved task/);
     });
   });
 }); 

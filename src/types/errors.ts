@@ -2,7 +2,7 @@
 export enum AppErrorCode {
     // Protocol Errors (ERR_1xxx)
     MissingParameter = 'ERR_1000', // General missing param (mapped to protocol -32602)
-    InvalidArgument = 'ERR_1002', // Extra / invalid param (mapped to protocol -32602)
+    InvalidArgument = 'ERR_1002', // Extra param / invalid type (mapped to protocol -32602)
 
     // Validation / Resource Not Found (ERR_2xxx)
     ConfigurationError = 'ERR_2000', // e.g., Missing API Key for generate_project_plan
@@ -10,6 +10,7 @@ export enum AppErrorCode {
     TaskNotFound = 'ERR_2002',
     InvalidState = 'ERR_2003', // e.g., invalid state filter
     InvalidProvider = 'ERR_2004', // e.g., invalid model provider
+    InvalidModel = 'ERR_2005', // e.g., invalid model name or model not accessible
 
     // No need for EmptyTaskFile code, handle during load
   
