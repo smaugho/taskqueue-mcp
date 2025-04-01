@@ -22,14 +22,16 @@ export interface TestContext {
 /**
  * Sets up a test context with MCP client, transport, and temp directory
  */
-export async function setupTestContext(): Promise<TestContext> {
+export async function setupTestContext(customFilePath?: string, skipFileInit: boolean = false): Promise<TestContext> {
   // Create a unique temp directory for test
   const tempDir = path.join(os.tmpdir(), `mcp-client-integration-test-${Date.now()}-${Math.floor(Math.random() * 10000)}`);
   await fs.mkdir(tempDir, { recursive: true });
-  const testFilePath = path.join(tempDir, 'test-tasks.json');
+  const testFilePath = customFilePath || path.join(tempDir, 'test-tasks.json');
 
-  // Initialize empty task manager file
-  await writeTaskManagerFile(testFilePath, { projects: [] });
+  // Initialize empty task manager file (skip for error testing)
+  if (!skipFileInit) {
+    await writeTaskManagerFile(testFilePath, { projects: [] });
+  }
 
   // Set up the transport with environment variable for test file
   const transport = new StdioClientTransport({
@@ -119,7 +121,7 @@ export function verifyCallToolResult(response: CallToolResult) {
 
   // If it's an error response, verify error format
   if (response.isError) {
-    expect(response.content[0].text).toMatch(/^(Error|Failed|Invalid)/);
+    expect(response.content[0].text).toMatch(/^(Error|Failed|Invalid|Tool execution failed)/);
   }
 }
 

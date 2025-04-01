@@ -9,18 +9,21 @@ import {
   TestContext
 } from '../test-helpers.js';
 import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
+import path from 'path';
+import os from 'os';
+
 describe('list_projects Tool', () => {
-  let context: TestContext;
-
-  beforeAll(async () => {
-    context = await setupTestContext();
-  });
-
-  afterAll(async () => {
-    await teardownTestContext(context);
-  });
-
   describe('Success Cases', () => {
+    let context: TestContext;
+
+    beforeAll(async () => {
+      context = await setupTestContext();
+    });
+
+    afterAll(async () => {
+      await teardownTestContext(context);
+    });
+
     it('should list projects with no filters', async () => {
       // Create a test project first
       const projectId = await createTestProject(context.client);
@@ -37,16 +40,18 @@ describe('list_projects Tool', () => {
 
       // Parse and verify response data
       const responseData = JSON.parse((result.content[0] as { text: string }).text);
-      expect(responseData).toHaveProperty('data');
-      expect(responseData.data).toHaveProperty('projects');
-      expect(Array.isArray(responseData.data.projects)).toBe(true);
+      expect(responseData).toHaveProperty('message');
+      expect(responseData).toHaveProperty('projects');
+      expect(Array.isArray(responseData.projects)).toBe(true);
       
       // Verify our test project is in the list
-      const projects = responseData.data.projects;
+      const projects = responseData.projects;
       const testProject = projects.find((p: any) => p.projectId === projectId);
       expect(testProject).toBeDefined();
       expect(testProject).toHaveProperty('initialPrompt');
-      expect(testProject).toHaveProperty('taskCount');
+      expect(testProject).toHaveProperty('totalTasks');
+      expect(testProject).toHaveProperty('completedTasks');
+      expect(testProject).toHaveProperty('approvedTasks');
     });
 
     it('should filter projects by state', async () => {
@@ -74,6 +79,22 @@ describe('list_projects Tool', () => {
         }
       });
 
+      // Approve and finalize the project
+      await context.client.callTool({
+        name: "approve_task",
+        arguments: {
+          projectId: completedProjectId,
+          taskId
+        }
+      });
+
+      await context.client.callTool({
+        name: "finalize_project",
+        arguments: {
+          projectId: completedProjectId
+        }
+      });
+
       // Test filtering by 'open' state
       const openResult = await context.client.callTool({
         name: "list_projects",
@@ -82,7 +103,7 @@ describe('list_projects Tool', () => {
 
       verifyCallToolResult(openResult);
       const openData = JSON.parse((openResult.content[0] as { text: string }).text);
-      const openProjects = openData.data.projects;
+      const openProjects = openData.projects;
       expect(openProjects.some((p: any) => p.projectId === openProjectId)).toBe(true);
       expect(openProjects.some((p: any) => p.projectId === completedProjectId)).toBe(false);
 
@@ -94,44 +115,61 @@ describe('list_projects Tool', () => {
 
       verifyCallToolResult(completedResult);
       const completedData = JSON.parse((completedResult.content[0] as { text: string }).text);
-      const completedProjects = completedData.data.projects;
+      const completedProjects = completedData.projects;
       expect(completedProjects.some((p: any) => p.projectId === completedProjectId)).toBe(true);
       expect(completedProjects.some((p: any) => p.projectId === openProjectId)).toBe(false);
     });
   });
 
   describe('Error Cases', () => {
-    it('should handle invalid state parameter', async () => {
-      try {
-        await context.client.callTool({
-          name: "list_projects",
-          arguments: { state: "invalid_state" }
-        });
-        fail('Expected error was not thrown');
-      } catch (error: any) {
-        verifyProtocolError(error, -32602, "Invalid parameter: state");
-      }
+    describe('Protocol Errors', () => {
+      let context: TestContext;
+
+      beforeAll(async () => {
+        context = await setupTestContext();
+      });
+
+      afterAll(async () => {
+        await teardownTestContext(context);
+      });
+
+      it('should handle invalid state parameter', async () => {
+        try {
+          await context.client.callTool({
+            name: "list_projects",
+            arguments: { state: "invalid_state" }
+          });
+          fail('Expected error was not thrown');
+        } catch (error: any) {
+          verifyProtocolError(error, -32602, "Invalid state parameter. Must be one of: open, pending_approval, completed, all");
+        }
+      });
     });
 
-    it('should handle server errors gracefully', async () => {
-      // Simulate a server error by using an invalid file path
-      const transport = context.transport as any;
-      transport.env = {
-        ...transport.env,
-        TASK_MANAGER_FILE_PATH: '/invalid/path/that/does/not/exist'
-      };
+    describe('File System Errors', () => {
+      let errorContext: TestContext;
+      const invalidPathDir = path.join(os.tmpdir(), 'nonexistent-dir');
+      const invalidFilePath = path.join(invalidPathDir, 'invalid-file.json');
 
-      const result = await context.client.callTool({
-        name: "list_projects",
-        arguments: {}
-      }) as CallToolResult;
+      beforeAll(async () => {
+        // Set up test context with invalid file path, skipping file initialization
+        errorContext = await setupTestContext(invalidFilePath, true);
+      });
 
-      verifyCallToolResult(result);
-      expect(result.isError).toBe(true);
-      expect(result.content[0].text).toMatch(/Error: (ENOENT|Failed to read)/);
+      afterAll(async () => {
+        await teardownTestContext(errorContext);
+      });
 
-      // Reset the file path
-      transport.env.TASK_MANAGER_FILE_PATH = context.testFilePath;
+      it('should handle server errors gracefully', async () => {
+        const result = await errorContext.client.callTool({
+          name: "list_projects",
+          arguments: {}
+        }) as CallToolResult;
+
+        verifyCallToolResult(result);
+        expect(result.isError).toBe(true);
+        expect(result.content[0].text).toMatch(/Tool execution failed: .*(ENOENT|Tasks file not found|Failed to read)/);
+      });
     });
   });
 }); 

@@ -22,12 +22,6 @@ const server = new Server(
   }
 );
 
-// Debug logging
-console.error('Server starting with env:', {
-  TASK_MANAGER_FILE_PATH: process.env.TASK_MANAGER_FILE_PATH,
-  NODE_ENV: process.env.NODE_ENV
-});
-
 // Create task manager instance
 const taskManager = new TaskManager();
 

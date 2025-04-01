@@ -30,18 +30,7 @@ program.hook('preAction', (thisCommand, actionCommand) => {
   try {
     taskManager = new TaskManager(resolvedPath);
   } catch (error) {
-    if (error instanceof Error) {
-      if (error.name === 'FileReadError') {
-        console.error(chalk.red(`Failed to initialize TaskManager: Could not read tasks file`));
-        if (resolvedPath) {
-          console.error(chalk.yellow(`Please check if the file exists and you have permission to read: ${resolvedPath}`));
-        }
-      } else {
-        console.error(chalk.red(`Failed to initialize TaskManager: ${formatCliError(error)}`));
-      }
-    } else {
-      console.error(chalk.red(`Failed to initialize TaskManager: Unknown error occurred`));
-    }
+    console.error(chalk.red(formatCliError(error as Error)));
     process.exit(1);
   }
 });
@@ -72,23 +61,8 @@ program
           process.exit(1);
         }
       } catch (error) {
-        if (error instanceof Error) {
-          if (error.name === 'ProjectNotFound') {
-            console.error(chalk.red(`Project ${chalk.bold(projectId)} not found.`));
-            // Optionally list available projects
-            const projects = await taskManager.listProjects();
-            if (projects.projects.length > 0) {
-              console.log(chalk.yellow('Available projects:'));
-              projects.projects.forEach((p) => {
-                console.log(`  - ${p.projectId}: ${p.initialPrompt.substring(0, 50)}${p.initialPrompt.length > 50 ? '...' : ''}`);
-              });
-            } else {
-              console.log(chalk.yellow('No projects available.'));
-            }
-            process.exit(1);
-          }
-        }
-        throw error; // Re-throw other errors
+        console.error(chalk.red(formatCliError(error as Error)));
+        process.exit(1);
       }
 
       // Pre-check task status if not using force
@@ -150,11 +124,7 @@ program
         }
       }
     } catch (error) {
-      if (error instanceof Error) {
-        console.error(chalk.red(formatCliError(error)));
-      } else {
-        console.error(chalk.red('An unknown error occurred'));
-      }
+      console.error(chalk.red(formatCliError(error as Error)));
       process.exit(1);
     }
   });
@@ -172,24 +142,8 @@ program
       try {
         project = await taskManager.readProject(projectId);
       } catch (error) {
-        if (error instanceof Error) {
-          if (error.name === 'ProjectNotFound') {
-            console.error(chalk.red(`Project ${chalk.bold(projectId)} not found.`));
-            // Optionally list available projects
-            const projects = await taskManager.listProjects();
-            if (projects.projects.length > 0) {
-              console.log(chalk.yellow('Available projects:'));
-              projects.projects.forEach((p) => {
-                console.log(`  - ${p.projectId}: ${p.initialPrompt.substring(0, 50)}${p.initialPrompt.length > 50 ? '...' : ''}`);
-              });
-            } else {
-              console.log(chalk.yellow('No projects available.'));
-            }
-            process.exit(1);
-          }
-          throw error; // Re-throw other errors
-        }
-        throw new Error('Unknown error occurred');
+        console.error(chalk.red(formatCliError(error as Error)));
+        process.exit(1);
       }
 
       // Pre-check project status
@@ -250,11 +204,7 @@ program
       console.log(chalk.blue(`  taskqueue list -p ${projectId}`));
 
     } catch (error) {
-      if (error instanceof Error) {
-        console.error(chalk.red(formatCliError(error)));
-      } else {
-        console.error(chalk.red('An unknown error occurred'));
-      }
+      console.error(chalk.red(formatCliError(error as Error)));
       process.exit(1);
     }
   });
@@ -303,24 +253,8 @@ program
           }
 
         } catch (error) {
-          if (error instanceof Error) {
-            if (error.name === 'ProjectNotFound') {
-              console.error(chalk.red(`Project ${chalk.bold(projectId)} not found.`));
-              // Optionally list available projects
-              const projects = await taskManager.listProjects();
-              if (projects.projects.length > 0) {
-                console.log(chalk.yellow('Available projects:'));
-                projects.projects.forEach((p) => {
-                  console.log(`  - ${p.projectId}: ${p.initialPrompt.substring(0, 50)}${p.initialPrompt.length > 50 ? '...' : ''}`);
-                });
-              } else {
-                console.log(chalk.yellow('No projects available.'));
-              }
-              process.exit(1);
-            }
-            console.error(chalk.red(formatCliError(error)));
-            process.exit(1);
-          }
+          console.error(chalk.red(formatCliError(error as Error)));
+          process.exit(1);
         }
       } else {
         // List all projects, potentially filtered
@@ -338,11 +272,7 @@ program
         }
       }
     } catch (error) {
-      if (error instanceof Error) {
-        console.error(chalk.red(formatCliError(error)));
-      } else {
-        console.error(chalk.red('An unknown error occurred'));
-      }
+      console.error(chalk.red(formatCliError(error as Error)));
       process.exit(1);
     }
   });
@@ -383,22 +313,7 @@ program
         console.log(`\n${result.message}`);
       }
     } catch (error) {
-      if (error instanceof Error) {
-        // Special handling for file system errors
-        if (error.name === 'FileReadError') {
-          console.error(chalk.red("Error: Could not read one or more attachment files"));
-          if (options.attachment.length > 0) {
-            console.error(chalk.yellow("Please check if these files exist and are readable:"));
-            options.attachment.forEach((file: string) => {
-              console.error(chalk.yellow(`  - ${file}`));
-            });
-          }
-        } else {
-          console.error(`Error: ${chalk.red(formatCliError(error))}`);
-        }
-      } else {
-        console.error(chalk.red('An unknown error occurred'));
-      }
+      console.error(chalk.red(formatCliError(error as Error)));
       process.exit(1);
     }
   });

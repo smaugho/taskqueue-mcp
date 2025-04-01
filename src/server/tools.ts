@@ -472,7 +472,13 @@ export async function executeToolAndHandleErrors(
   } catch (error: AppError | unknown) {
     // 4a. Handle protocol errors (missing params, invalid args)
     if (error instanceof AppError) {
-      if (error.code === AppErrorCode.MissingParameter || error.code === AppErrorCode.InvalidArgument) {
+      if ([
+          AppErrorCode.MissingParameter, 
+          AppErrorCode.InvalidArgument,
+          AppErrorCode.InvalidState,
+          AppErrorCode.ConfigurationError
+        ].includes(error.code as AppErrorCode)
+      ) {
         throw new McpError(ErrorCode.InvalidParams, error.message);
       }
     }

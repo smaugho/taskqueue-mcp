@@ -6,7 +6,12 @@ import { AppError } from "../types/errors.js";
 export function formatCliError(error: Error): string {
   // Handle our custom file system errors by prefixing the error code
   if (error instanceof AppError) {
-    return `${error.code}: ${error.message}`;
+    let details = '';
+    if (error.details) {
+      const detailsStr = typeof error.details === 'string' ? error.details : String(error.details);
+      details = `\n-> Details: ${detailsStr.replace(/^AppError:\s*/, '')}`;
+    }
+    return `[${error.code}] ${error.message}${details}`;
   }
 
   // For unknown errors, just return the error message

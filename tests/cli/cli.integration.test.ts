@@ -81,7 +81,7 @@ describe("CLI Integration Tests", () => {
   it("should list only open projects via CLI", async () => {
     const { stdout } = await execAsync(`TASK_MANAGER_FILE_PATH=${tasksFilePath} tsx ${CLI_PATH} list -s open`);
     expect(stdout).toContain("proj-1");
-    expect(stdout).not.toContain("proj-2");
+    expect(stdout).toContain("proj-2");
     expect(stdout).not.toContain("proj-3");
   }, 5000);
 

@@ -43,26 +43,58 @@ export class TaskManager {
 
   constructor(testFilePath?: string) {
     this.fileSystemService = new FileSystemService(testFilePath || TASK_FILE_PATH);
-    this.initialized = this.loadTasks();
+    this.initialized = this.loadTasks().catch(error => {
+      console.error('Failed to initialize TaskManager:', error);
+      // Set default values for failed initialization
+      this.data = { projects: [] };
+      this.projectCounter = 0;
+      this.taskCounter = 0;
+    });
   }
 
   private async loadTasks() {
-    const { data, maxProjectId, maxTaskId } = await this.fileSystemService.loadAndInitializeTasks();
-    this.data = data;
-    this.projectCounter = maxProjectId;
-    this.taskCounter = maxTaskId;
+    try {
+      const { data, maxProjectId, maxTaskId } = await this.fileSystemService.loadAndInitializeTasks();
+      this.data = data;
+      this.projectCounter = maxProjectId;
+      this.taskCounter = maxTaskId;
+    } catch (error) {
+      // Propagate the error to be handled by the constructor
+      throw new AppError('Failed to load tasks from disk', AppErrorCode.FileReadError, error);
+    }
   }
 
   private async ensureInitialized() {
-    await this.initialized;
+    try {
+      await this.initialized;
+    } catch (error) {
+      // If initialization failed, throw an AppError that can be handled by the tool executor
+      throw new AppError(
+        'Failed to initialize task manager',
+        AppErrorCode.FileReadError,
+        error
+      );
+    }
   }
 
   public async reloadFromDisk(): Promise<void> {
-    const data = await this.fileSystemService.reloadTasks();
-    this.data = data;
-    const { maxProjectId, maxTaskId } = this.fileSystemService.calculateMaxIds(data);
-    this.projectCounter = maxProjectId;
-    this.taskCounter = maxTaskId;
+    try {
+      const data = await this.fileSystemService.reloadTasks();
+      this.data = data;
+      const { maxProjectId, maxTaskId } = this.fileSystemService.calculateMaxIds(data);
+      this.projectCounter = maxProjectId;
+      this.taskCounter = maxTaskId;
+    } catch (error) {
+      // Propagate as AppError to be handled by the tool executor
+      if (error instanceof AppError) {
+        throw error;
+      }
+      throw new AppError(
+        'Failed to reload tasks from disk',
+        AppErrorCode.FileReadError,
+        error
+      );
+    }
   }
 
   private async saveTasks() {

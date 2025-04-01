@@ -138,9 +138,13 @@ export class FileSystemService {
       const data = await readFile(this.filePath, "utf-8");
       return JSON.parse(data);
     } catch (error) {
-      // Initialize with empty data for any initialization error
-      // This includes file not found, permission issues, invalid JSON, etc.
-      return { projects: [] };
+      if (error instanceof Error) {
+        if (error.message.includes('ENOENT')) {
+          throw new AppError(`Tasks file not found: ${this.filePath}`, AppErrorCode.FileReadError, error);
+        }
+        throw new AppError(`Failed to read tasks file: ${error.message}`, AppErrorCode.FileReadError, error);
+      }
+      throw new AppError('Unknown error reading tasks file', AppErrorCode.FileReadError, error);
     }
   }
 
