@@ -129,9 +129,21 @@ A typical workflow for an LLM using this task manager would be:
 
 ### CLI Commands
 
+To use the CLI, you will need to install the package globally:
+
+```bash
+npm install -g taskqueue-mcp
+```
+
+Alternatively, you can run the CLI with `npx` using the `--package=taskqueue-mcp` flag to tell `npx` what package it's from.
+
+```bash
+npx --package=taskqueue-mcp taskqueue --help
+```
+
 #### Task Approval
 
-Task approval is controlled exclusively by the human user through the CLI command:
+Task approval is controlled exclusively by the human user through the CLI:
 
 ```bash
 npx taskqueue approve-task -- <projectId> <taskId>
