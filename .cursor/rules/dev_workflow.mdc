@@ -1,0 +1,143 @@
+---
+description: Guide for using TaskQueue MCP services for task-driven development workflows
+globs: **/*
+alwaysApply: true
+---
+- **Introduction**
+  - This guide outlines the development workflow using the TaskQueue MCP (Model Context Protocol) services.
+  - TaskQueue MCP provides tools for AI agents (like Cursor) to manage projects and tasks in a structured manner, involving human confirmation before programmatic approval.
+  - **Contextual Clarification:** Within the `dstaff-aggregator` development process:
+    - A TaskQueue **"Project"** directly corresponds to a specific **"Step"** outlined in the development plan.
+    - The `initialPrompt` for the Project should be the Step's title.
+    - The `projectPlan` for the Project MUST contain:
+      - The full description associated with that Step in the development plan.
+      - A **Mermaid diagram** visualizing the step's core concepts, flows, or changes.
+      - **Diagram Guidelines:**
+        - Use Mermaid syntax.
+        - Visualize relevant flows, relationships, architectural changes, or component interactions.
+        - Choose the most appropriate diagram type (class, sequence, flowchart, component).
+        - Prioritize clarity, relevance, and highlighting changes/additions.
+        - If no diagram is genuinely applicable (should be rare), explicitly state "No diagram needed" instead.
+    - Correspondingly, **"Tasks"** are the individual actions required to complete that specific Project/Step, broken down into Red, Green, and Refactor phases as detailed below.
+
+- **Core Development Workflow**
+  1.  **Select Next Project:**
+      - Use `mcp_taskqueue_list_projects state='open'` to find the first project that is not yet completed. Prioritize working through projects sequentially based on their order in the list or creation time.
+      - If no open project exists for the desired workstream (e.g., a new feature or Step), create one using `mcp_taskqueue_create_project` or `mcp_taskqueue_generate_project_plan`. Ensure tasks follow the TDD structure defined below. Note the `projectId`.
+      - **Set the identified `projectId` as the current focus.**
+  2.  **Get Next Task:**
+      - Use `mcp_taskqueue_get_next_task` with the current `projectId` to retrieve the next available (non-approved) task *within that project*.
+  3.  **Understand the Task:**
+      - Use `mcp_taskqueue_read_task` with the `projectId` and `taskId` to get full details.
+      - Pay close attention to which TDD phase this task represents (Red, Green, Refactor) and its specific description.
+      - Review `toolRecommendations` and `ruleRecommendations` if provided.
+  4.  **Implement the Task (Execute TDD Phase):**
+      - Perform the specific work described for the current TDD phase (e.g., write a failing test, write implementation code, refactor). Adhere strictly to the goals of that phase as outlined in [testing_strategy.mdc](mdc:.cursor/rules/testing_strategy.mdc).
+      - **Red Phase Requirement:** After writing tests in the Red phase, you **MUST** run the tests to verify they fail as expected. Include the failing test results in the task's completedDetails when marking it as done. For example:
+        ```
+        # Run relevant tests
+        npm run test:mcp -- -t "some test"
+        ```
+      - **Validation:** For *Green* and *Refactor* phases, **before** marking the task as `done`, the AI agent MUST successfully run the **Full Validation Suite** as defined in [testing_strategy.mdc](mdc:.cursor/rules/testing_strategy.mdc) (lint, build, unit tests, e2e tests). Report the outcome to the human.
+        - **If the validation suite fails, the errors MUST be corrected, and the suite MUST be re-run successfully before proceeding.**
+  5.  **Mark Task as Done:**
+      - Once the specific phase's work is completed **and (for Green/Refactor phases) the Full Validation Suite passes**, use `mcp_taskqueue_update_task`.
+      - Set `status` to `'done'`.
+      - Provide a clear description of the work completed for *this phase* in the `completedDetails` field (this is required).
+      - **For Green and Refactor phases, the `completedDetails` MUST also include a summary of the Full Validation Suite results (e.g., 'Validation Suite: Lint Passed (`npm run lint`), Build Passed (`npm run build`), Unit Tests Passed (`npm test`), E2E Tests Passed (`npm run test:e2e`)').**
+  6.  **Await Human Confirmation & Approve Task:**
+      - Inform the human developer that the task (`taskId` for `projectId`) is marked 'done' and requires review.
+      - Ask the human developer for explicit confirmation that the work is approved.
+      - **Crucially, once the human provides confirmation, the AI agent MUST update the task's `completedDetails` using `mcp_taskqueue_update_task`, appending the confirmation details (e.g., appending "\n\n[Confirmation received from human: Approved]") to the existing content.**
+      - After successfully updating `completedDetails` with the confirmation, the AI agent MUST then call `mcp_taskqueue_approve_task` with the `projectId` and `taskId`.
+      - *The AI agent MUST wait for this confirmation and successful approval call before proceeding.*
+  7.  **Repeat for Tasks:**
+      - Go back to step 2 (`get_next_task`) to continue working through the tasks *of the current project* sequentially (Red -> Green -> Refactor for a given feature).
+  8.  **Finalize Project:**
+      - Once all tasks within the current project are `done` and `approved`, use `mcp_taskqueue_finalize_project` with the `projectId`.
+      - Return to Step 1 to select the *next* open project.
+
+- **Task Creation Strategy (TDD)**
+  - Adherence to Test-Driven Development (TDD) is mandatory, as detailed in [testing_strategy.mdc](mdc:.cursor/rules/testing_strategy.mdc).
+  - **Any new piece of work (feature, bug fix, significant change) MUST be represented by exactly three sequential tasks:** one for each TDD phase.
+  - Use `mcp_taskqueue_create_task` or `mcp_taskqueue_add_tasks_to_project` to create these three tasks *together* when defining the work.
+  - **Naming Convention:**
+    - `Red Phase: [Original Task Title]`
+    - `Green Phase: [Original Task Title]`
+    - `Refactor Phase: [Original Task Title]`
+  - **Phase Descriptions:**
+    - **Red Phase:** The description must clearly state the goal is to write one or more tests that define the desired behavior or reproduce the bug. Crucially, these tests *must fail* initially, proving the behavior isn't already present. Specify *what* needs to be tested.
+    - **Green Phase:** The description must clearly state the goal is to write the *minimum* amount of functional code necessary to make the previously written test(s) pass. Focus solely on satisfying the test requirements.
+    - **Refactor Phase:** The description must clearly state the goal is to clean up and improve the code written in the Green Phase (e.g., improve readability, remove duplication, enhance performance) *without changing its external behavior*. All tests must continue to pass after refactoring. Identify specific areas for potential refactoring if known.
+  - These three tasks form a logical unit and should be worked on sequentially as per the Core Development Workflow.
+
+- **Project Management Tools (MCP)**
+  - `mcp_taskqueue_list_projects`: Lists all projects (optionally filter by state: 'open', 'pending_approval', 'completed', 'all').
+  - `mcp_taskqueue_read_project`: Gets details for a specific `projectId`.
+  - `mcp_taskqueue_create_project`: Creates a new project with an `initialPrompt` and a list of `tasks`. Can set `autoApprove`.
+  - `mcp_taskqueue_generate_project_plan`: Uses an LLM (OpenAI, Google, Deepseek) to create a project plan and tasks from a `prompt` and optional `attachments`. Requires relevant API key env var.
+  - `mcp_taskqueue_delete_project`: Removes a project and its tasks by `projectId`.
+  - `mcp_taskqueue_update_project`: Update a project's `initialPrompt` and/or `projectPlan` fields.
+  - `mcp_taskqueue_add_tasks_to_project`: Adds new `tasks` to an existing `projectId`.
+  - `mcp_taskqueue_finalize_project`: Marks a project as complete (all tasks must be done and approved).
+
+- **Task Management Tools (MCP)**
+  - `mcp_taskqueue_list_tasks`: Lists tasks for a `projectId` (optionally filter by state: 'open', 'pending_approval', 'completed', 'all').
+  - `mcp_taskqueue_read_task`: Gets details for a specific `taskId` within a `projectId`.
+  - `mcp_taskqueue_create_task`: Creates a single new task within a `projectId`.
+  - `mcp_taskqueue_update_task`: Modifies properties of a task (`title`, `description`, `status`, `completedDetails`, `toolRecommendations`, `ruleRecommendations`).
+  - `mcp_taskqueue_delete_task`: Removes a task by `taskId` from a `projectId`.
+  - `mcp_taskqueue_get_next_task`: Gets the next task (first non-approved) for a `projectId`.
+  - `mcp_taskqueue_approve_task`: Approves a completed task. This MUST only be called after verifying human confirmation within the task's `completedDetails` (see step 6). Requires `projectId` and `taskId`.
+
+- **Task Status Management**
+  - **States:**
+    - `not started`: Task has not been started.
+    - `in progress`: Task is actively being worked on.
+    - `done`: Task implementation is complete (requires `completedDetails`).
+  - **Transitions:**
+    - `not started` -> `in progress`
+    - `in progress` -> `done` OR `not started`
+    - `done` -> `in progress` (if rework is needed before approval)
+  - **Approval:**
+    - Tasks marked `done` require human review and confirmation.
+    - The AI agent MUST ask the human for confirmation.
+    - Once confirmation is received, the AI agent MUST record this confirmation within the task's `completedDetails` using `mcp_taskqueue_update_task`.
+    - After recording confirmation, the AI agent uses `mcp_taskqueue_approve_task` to finalize approval.
+    - Approved tasks cannot be modified.
+    - Projects can only be finalized when all tasks are `done` and `approved`.
+
+- **Displaying Project/Task Information**
+  - When presenting the status of a Project (representing a development Step) and its Tasks to the user, the AI agent should format the output to closely resemble the structure used for documenting Steps.
+  - This means displaying:
+    - The Project's `initialPrompt` as the main heading (e.g., `## [Project Title]`).
+    - Tasks grouped under their respective phase headings (Red, Green, Refactor).
+    - For each task: its status (e.g., ✅/⬜), its title, and its **full description**.
+    - The Project's `projectPlan` (containing the original step description and Mermaid diagram) should typically be displayed separately at the end or beginning for overall context.
+  - Example Structure:
+    ```markdown
+       ## [Project Initial Prompt]
+
+       **Project Plan**
+       [Project Plan content, including Mermaid Diagram]
+
+       ### Red Phase
+       - ✅ **[Task 1 Title]**
+         [Full Task 1 Description]
+       - ✅ **[Task 2 Title]**
+         [Full Task 2 Description]
+       - ⬜ **[Task 3 Title]**
+         [Full Task 3 Description]
+
+       ### Green Phase
+       - ⬜ **[Task 1 Title]**
+         [Full Task 1 Description]
+       - ⬜ **[Task 2 Title]**
+         [Full Task 2 Description]
+
+       ### Refactor Phase
+       - ⬜ **[Task 1 Title]**
+         [Full Task 1 Description]
+       - ⬜ **[Task 2 Title]**
+         [Full Task 2 Description]
+    ```

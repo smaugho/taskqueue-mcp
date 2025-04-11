@@ -4,6 +4,20 @@
 
 MCP Task Manager ([npm package: taskqueue-mcp](https://www.npmjs.com/package/taskqueue-mcp)) is a Model Context Protocol (MCP) server for AI task management. This tool helps AI assistants handle multi-step tasks in a structured way, with optional user approval checkpoints.
 
+## Local Setup for your own "flavor"
+
+For those wanting adjustments on its implementation, recommended to download and modify as per needs. 
+
+For configuring this project in a project-per-project basis using Cursor IDE, you could use the file [mcp.json.example](.cursor/mcp.json.example) to set up the MCP Server. Ensure to place it in ".cursor" folder. 
+
+It is also essential to create manually the "tasks.json" file, with the following content:
+
+```json
+{
+  "projects": []
+}
+```
+
 ## Features
 
 - Task planning with multiple steps

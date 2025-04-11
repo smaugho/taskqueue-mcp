@@ -12,3 +12,6 @@ repomix-output.txt
 # Task files
 tasks.json
 *.tasks.json
+
+# MCP config
+.cursor/mcp.json

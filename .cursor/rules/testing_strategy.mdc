@@ -1,0 +1,113 @@
+---
+description: General testing approach and preferences for the TaskQueue MCP.
+globs: tests/**/*.ts
+alwaysApply: false
+---
+
+# Testing Strategy for TaskQueue MCP
+
+- **Testing Approach & Preferences (Jest)**
+  - **Strict TDD:** Adhere rigorously to RED -> GREEN -> REFACTOR cycle. **Verify test failure before implementing.**
+  - **Behavior-Focused Tests:** Descriptions and assertions focus on *what* the system should do, not *how* (implementation details). Avoid implementation specifics in test names.
+    - **Good Examples:** `should list all projects`, `should return an error if project ID is missing`, `should create a task`
+    - **Bad Examples:** `should call listProjects method`, `should test the project validation logic`, `should check the createTask database operation`
+  - **Red Phase Validation:** After writing tests in the Red phase, you **MUST** run the tests to verify they fail as expected. This confirms that the tests correctly expect the behavior not yet implemented:
+    ```bash
+    # Example: Running specific tests for a new tool
+    npm run test:mcp -- -t "some test"
+    
+    # The test output should show failures that match your expectations
+    ```
+  - **Test Structure:** Follow the test organization in `tests/mcp/test-helpers.ts`, which provides a robust set of utilities for testing MCP components.
+    ```mermaid
+    flowchart TD
+        Tests[MCP Tests] --> TestHelpers[Test Helpers Layer]
+        TestHelpers --> McpClient[MCP Client]
+        McpClient --> FileSystem[File System Service]
+    ```
+  - **AAA Structure:** Use clear Arrange-Act-Assert structure with visual separation (blank lines). No assertions in Arrange. Single action in Act.
+    ```typescript
+    // Arrange
+    const projectId = await createTestProject(context.client, {
+      initialPrompt: "Test Project",
+      tasks: [{ title: "Task 1", description: "Test Task" }]
+    });
+    
+    // Act
+    const result = await context.client.callTool({
+      name: "list_projects",
+      arguments: { state: "all" }
+    });
+    
+    // Assert
+    const data = verifyToolSuccessResponse(result);
+    expect(data).toHaveProperty('projects');
+    expect(Array.isArray(data.projects)).toBe(true);
+    ```
+  - **Atomic Tests:** Each test covers a single behavior or scenario.
+  - **Test Isolation:** Use the `setupTestContext` and `teardownTestContext` helpers to ensure each test runs in a clean environment.
+  - **Mocking:** Use Jest's mocking capabilities for external dependencies when appropriate. The `test-helpers.ts` file provides utilities for mocking file system operations.
+  - **Verification Functions:** Use the provided verification functions (`verifyCallToolResult`, `verifyToolSuccessResponse`, etc.) to ensure consistent validation across tests.
+  - **Error Testing:** Test error conditions using `verifyToolExecutionError` to confirm both the error state and message pattern.
+  - **Test Data:** Use the helper functions to create test data (projects, tasks) with unique identifiers to avoid state conflicts.
+
+- **Full Validation Suite:**
+  - Before marking Green or Refactor phase tasks as `done`, run the complete validation suite to ensure code quality and prevent regressions.
+  - The suite includes:
+    - **Linting:** `npm run lint` (if available)
+    - **Building:** `npm run build`
+    - **MCP Tests:** `npm run test:mcp` (always run these tests, not the unit tests)
+  - All steps must pass.
+
+## MCP Tool Development Requirements
+
+- **Mandatory Testing for MCP Tools:**
+  - When adding, modifying, or improving any MCP tool, it is **required** to:
+    - **Create/Update MCP Tool Tests:** Create or update tests in `tests/mcp/tools/` with a filename matching the tool (e.g., `update-project.test.ts`). These tests should cover successful operations and all expected error conditions.
+    - **Create/Update E2E Tests:** Add or update end-to-end tests that verify the tool works correctly in a real environment. These should be added to `tests/mcp/e2e.integration.test.ts` or appropriate files in `tests/cli/` depending on the integration point.
+  - Both test types are **mandatory** for all tool development. No tool should be released without corresponding tests at both levels.
+  - These tests constitute a critical part of the Full Validation Suite and must pass before marking Green or Refactor phase tasks as complete.
+  - **Test Coverage Requirements:**
+    - Basic success scenarios.
+    - Edge cases and common error conditions.
+    - Parameter validation.
+    - Integration with dependent components.
+
+## Test File Organization
+
+- Tests should be organized by component type:
+  - **MCP Tool Tests:** Place in `tests/mcp/tools/` with filename matching the tool (e.g., `create-project.test.ts`)
+  - **Integration Tests:** Place in `tests/mcp/` for MCP integration or `tests/cli/` for CLI integration
+  - **Cross-package Tests:** Place in the root `tests/` directory
+
+## Example Test Structure
+
+```typescript
+import { describe, it, expect, beforeAll, afterAll } from '@jest/globals';
+import { setupTestContext, teardownTestContext, verifyToolSuccessResponse } from './test-helpers.js';
+import type { TestContext } from './test-helpers.js';
+
+describe('Feature being tested', () => {
+  let context: TestContext;
+
+  beforeAll(async () => {
+    context = await setupTestContext();
+  });
+
+  afterAll(async () => {
+    await teardownTestContext(context);
+  });
+
+  it('should do something specific', async () => {
+    // Arrange
+    const prerequisite = await setupPrerequisite(context);
+    
+    // Act
+    const result = await performAction(context, prerequisite);
+    
+    // Assert
+    const data = verifyToolSuccessResponse(result);
+    expect(data).toMatchExpectedFormat();
+    await verifyDataPersistence(context, data);
+  });
+}); 

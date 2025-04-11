@@ -19,6 +19,7 @@
 		"start": "node dist/src/server/index.js",
 		"dev": "tsc && node dist/src/server/index.js",
 		"test": "tsc && NODE_OPTIONS=--experimental-vm-modules jest",
+		"test:mcp": "tsc && jest",
 		"cli": "node dist/src/cli.js"
 	},
 	"repository": {
