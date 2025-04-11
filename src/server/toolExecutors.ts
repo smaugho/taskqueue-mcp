@@ -322,6 +322,44 @@ const readProjectToolExecutor: ToolExecutor = {
 toolExecutorMap.set(readProjectToolExecutor.name, readProjectToolExecutor);
 
 /**
+ * Tool executor for updating project details
+ */
+const updateProjectToolExecutor: ToolExecutor = {
+  name: "update_project",
+  async execute(taskManager, args) {
+    // 1. Argument Validation
+    const projectId = validateProjectId(args.projectId);
+
+    // Validate optional fields
+    let initialPrompt: string | undefined = undefined;
+    let projectPlan: string | undefined = undefined;
+    
+    if (args.initialPrompt !== undefined) {
+      initialPrompt = validateRequiredStringParam(args.initialPrompt, "initialPrompt");
+    }
+    
+    if (args.projectPlan !== undefined) {
+      projectPlan = validateRequiredStringParam(args.projectPlan, "projectPlan");
+    }
+
+    // Ensure at least one field is provided
+    if (initialPrompt === undefined && projectPlan === undefined) {
+      throw new AppError(
+        'At least one of initialPrompt or projectPlan must be provided',
+        AppErrorCode.InvalidArgument
+      );
+    }
+
+    // 2. Core Logic Execution
+    const resultData = await taskManager.updateProject(projectId, initialPrompt, projectPlan);
+
+    // 3. Return raw success data
+    return resultData;
+  },
+};
+toolExecutorMap.set(updateProjectToolExecutor.name, updateProjectToolExecutor);
+
+/**
  * Tool executor for deleting projects
  */
 const deleteProjectToolExecutor: ToolExecutor = {

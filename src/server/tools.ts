@@ -122,6 +122,34 @@ const deleteProjectTool: Tool = {
 };
 
 /**
+ * Update Project Tool
+ * @param {object} args - A JSON object containing the arguments
+ * @see {updateProjectToolExecutor}
+ */
+const updateProjectTool: Tool = {
+  name: "update_project",
+  description: "Update a project's initialPrompt and/or projectPlan fields.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      projectId: {
+        type: "string",
+        description: "The ID of the project to update (e.g., proj-1).",
+      },
+      initialPrompt: {
+        type: "string",
+        description: "The new initial prompt for the project.",
+      },
+      projectPlan: {
+        type: "string",
+        description: "The new project plan.",
+      },
+    },
+    required: ["projectId"],
+  },
+};
+
+/**
  * Add Tasks to Project Tool
  * @param {object} args - A JSON object containing the arguments
  * @see {addTasksToProjectToolExecutor}
@@ -433,6 +461,7 @@ export const ALL_TOOLS: Tool[] = [
   readProjectTool,
   createProjectTool,
   deleteProjectTool,
+  updateProjectTool,
   addTasksToProjectTool,
   finalizeProjectTool,
   generateProjectPlanTool,

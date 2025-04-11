@@ -597,4 +597,60 @@ export class TaskManager {
       tasks: project.tasks,
     };
   }
+
+  /**
+   * Updates a project's initialPrompt and/or projectPlan
+   * @param projectId The ID of the project to update
+   * @param initialPrompt Optional new initial prompt
+   * @param projectPlan Optional new project plan
+   * @returns The updated project data
+   */
+  public async updateProject(
+    projectId: string,
+    initialPrompt?: string,
+    projectPlan?: string
+  ): Promise<ReadProjectSuccessData> {
+    await this.ensureInitialized();
+    await this.reloadFromDisk();
+
+    // Find the project
+    const project = this.data.projects.find((p) => p.projectId === projectId);
+    if (!project) {
+      throw new AppError(`Project ${projectId} not found`, AppErrorCode.ProjectNotFound);
+    }
+
+    // Check if the project is already completed
+    if (project.completed) {
+      throw new AppError('Project is already completed', AppErrorCode.ProjectAlreadyCompleted);
+    }
+
+    // Ensure at least one update field is provided
+    if (initialPrompt === undefined && projectPlan === undefined) {
+      throw new AppError(
+        'At least one of initialPrompt or projectPlan must be provided',
+        AppErrorCode.InvalidArgument
+      );
+    }
+
+    // Update the fields
+    if (initialPrompt !== undefined) {
+      project.initialPrompt = initialPrompt;
+    }
+    if (projectPlan !== undefined) {
+      project.projectPlan = projectPlan;
+    }
+
+    // Save the changes
+    await this.saveTasks();
+
+    // Return the updated project
+    return {
+      projectId: project.projectId,
+      initialPrompt: project.initialPrompt,
+      projectPlan: project.projectPlan,
+      completed: project.completed,
+      autoApprove: project.autoApprove,
+      tasks: project.tasks,
+    };
+  }
 } 
