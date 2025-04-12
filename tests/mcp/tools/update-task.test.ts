@@ -110,10 +110,10 @@ describe('update_task Tool', () => {
       const responseText = (result.content[0] as { text: string }).text;
       // Parse the JSON response
       const responseData = JSON.parse(responseText);
-      
+    
       // Check the message property
       expect(responseData).toHaveProperty('message');
-      const expectedMessage = `Task marked as done but requires approval.\nTo approve, run: npx taskqueue approve-task -- ${project.projectId} ${task.id}`;
+      const expectedMessage = `Task marked as done but requires human approval.\nTo approve, user should run: npx taskqueue approve-task -- ${project.projectId} ${task.id}`;
       expect(responseData.message).toBe(expectedMessage);
       
       // Check that the core task data is present under the 'task' key

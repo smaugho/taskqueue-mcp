@@ -548,7 +548,7 @@ export class TaskManager {
     // Generate message if needed
     let message: string | undefined = undefined;
     if (updates.status === 'done' && proj.autoApprove === false) {
-      message = `Task marked as done but requires approval.\nTo approve, run: npx taskqueue approve-task -- ${projectId} ${taskId}`;
+      message = `Task marked as done but requires human approval.\nTo approve, user should run: npx taskqueue approve-task -- ${projectId} ${taskId}`;
     }
 
     await this.saveTasks();
