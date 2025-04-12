@@ -3,6 +3,7 @@ import { TaskManager } from "./TaskManager.js";
 import { toolExecutorMap } from "./toolExecutors.js";
 import { AppError, AppErrorCode } from "../types/errors.js";
 import { McpError, CallToolResult, ErrorCode } from "@modelcontextprotocol/sdk/types.js";
+import { UpdateTaskSuccessData } from '../types/response.js';
 
 // ---------------------- PROJECT TOOLS ----------------------
 
@@ -468,9 +469,11 @@ export async function executeToolAndHandleErrors(
     // 2. Execute the tool - Validation errors (protocol) or TaskManager errors (execution) might be thrown
     const resultData = await executor.execute(taskManager, args);
 
-    // 3. Format successful execution result
+    // 3. Format successful execution result using standard stringify
+    const responseText = JSON.stringify(resultData, null, 2);
+
     return {
-      content: [{ type: "text", text: JSON.stringify(resultData, null, 2) }]
+      content: [{ type: "text", text: responseText }]
     };
 
   } catch (error: AppError | unknown) {

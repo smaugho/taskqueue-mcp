@@ -14,7 +14,7 @@ const program = new Command();
 program
   .name("taskqueue")
   .description("CLI for the Task Manager MCP Server")
-  .version("1.4.0")
+  .version("1.4.1")
   .option(
     '-f, --file-path <path>',
     'Specify the path to the tasks JSON file. Overrides TASK_MANAGER_FILE_PATH env var.'

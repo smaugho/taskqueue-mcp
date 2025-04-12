@@ -55,7 +55,7 @@ export interface ProjectCreationSuccessData {
   export interface DeleteTaskSuccessData {
     message: string;
   }
-  
+
   export interface ReadProjectSuccessData {
     projectId: string;
     initialPrompt: string;
@@ -63,5 +63,11 @@ export interface ProjectCreationSuccessData {
     completed: boolean;
     autoApprove?: boolean;
     tasks: Task[];
+  }
+
+  // Add the new interface for update_task success
+  export interface UpdateTaskSuccessData {
+    task: Task; // The updated task object
+    message?: string; // Optional message (e.g., approval reminder)
   }
   

@@ -82,6 +82,54 @@ describe('update_task Tool', () => {
       });
     });
 
+    it('should return reminder message when marking task done in a project requiring approval', async () => {
+      // Create a project that requires approval
+      const project = await createTestProjectInFile(context.testFilePath, {
+        initialPrompt: "Project Requiring Approval",
+        autoApprove: false // Explicitly set for clarity
+      });
+      const task = await createTestTaskInFile(context.testFilePath, project.projectId, {
+        title: "Task to be Approved",
+        status: "in progress"
+      });
+
+      // Mark the task as done
+      const result = await context.client.callTool({
+        name: "update_task",
+        arguments: {
+          projectId: project.projectId,
+          taskId: task.id,
+          status: "done",
+          completedDetails: "Task finished, awaiting approval."
+        }
+      }) as CallToolResult;
+
+      // Verify the response includes the approval reminder within the JSON structure
+      verifyCallToolResult(result); // Basic verification
+      expect(result.isError).toBeFalsy();
+      const responseText = (result.content[0] as { text: string }).text;
+      // Parse the JSON response
+      const responseData = JSON.parse(responseText);
+    
+      // Check the message property
+      expect(responseData).toHaveProperty('message');
+      const expectedMessage = `Task marked as done but requires human approval.\nTo approve, user should run: npx taskqueue approve-task -- ${project.projectId} ${task.id}`;
+      expect(responseData.message).toBe(expectedMessage);
+      
+      // Check that the core task data is present under the 'task' key
+      expect(responseData).toHaveProperty('task');
+      expect(responseData.task.id).toBe(task.id);
+      expect(responseData.task.status).toBe('done');
+      expect(responseData.task.completedDetails).toBe("Task finished, awaiting approval.");
+
+      // Also verify the task state in the file
+      await verifyTaskInFile(context.testFilePath, project.projectId, task.id, {
+        status: "done",
+        completedDetails: "Task finished, awaiting approval.",
+        approved: false // Should not be approved yet
+      });
+    });
+
     it('should update task title and description', async () => {
       const project = await createTestProjectInFile(context.testFilePath, {
         initialPrompt: "Test Project"

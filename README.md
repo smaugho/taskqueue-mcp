@@ -29,7 +29,7 @@ Usually you will set the tool configuration in Claude Desktop, Cursor, or anothe
 }
 ```
 
-To use the CLI utility, you can use the following command:
+To use the CLI utility, you can install the package globally and then use the following command:
 
 ```bash
 npx taskqueue --help
@@ -145,6 +145,8 @@ npx --package=taskqueue-mcp taskqueue --help
 
 #### Task Approval
 
+By default, all tasks and projects will be auto-approved when marked "done" by the AI agent. To require manual human task approval, set `autoApprove` to `false` when creating a project.
+
 Task approval is controlled exclusively by the human user through the CLI:
 
 ```bash
@@ -154,7 +156,7 @@ npx taskqueue approve-task -- <projectId> <taskId>
 Options:
 - `-f, --force`: Force approval even if the task is not marked as done
 
-Note: Tasks must be marked as "done" with completed details before they can be approved (unless using --force).
+Note: Tasks must be marked as "done" with completed details by the AI agent before they can be approved (unless using --force).
 
 #### Listing Tasks and Projects
 
@@ -221,6 +223,7 @@ TaskManagerFile
     ├── initialPrompt: string        # Original user request text
     ├── projectPlan: string          # Additional project details
     ├── completed: boolean           # Project completion status
+    ├── autoApprove: boolean         # Set `false` to require manual user approval
     └── tasks: Task[]                # Array of tasks
         ├── id: string               # Format: "task-{number}"
         ├── title: string            # Short task title

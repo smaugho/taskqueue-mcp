@@ -111,6 +111,7 @@ describe('create_project Tool', () => {
         "Task 2",
         "Task 3"
       ]);
+      expect(project).toHaveProperty('autoApprove', true);
     });
 
     it('should create a project with auto-approve enabled', async () => {

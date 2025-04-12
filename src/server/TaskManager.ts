@@ -15,6 +15,7 @@ import {
   AddTasksSuccessData,
   DeleteTaskSuccessData,
   ReadProjectSuccessData,
+  UpdateTaskSuccessData
 } from "../types/response.js";
 import { AppError, AppErrorCode } from "../types/errors.js";
 import { FileSystemService } from "./FileSystemService.js";
@@ -134,7 +135,7 @@ export class TaskManager {
       projectPlan: projectPlan || initialPrompt,
       tasks: newTasks,
       completed: false,
-      autoApprove: autoApprove === true ? true : false,
+      autoApprove: autoApprove === false ? false : true,
     };
 
     this.data.projects.push(newProject);
@@ -519,7 +520,7 @@ export class TaskManager {
       status?: "not started" | "in progress" | "done";
       completedDetails?: string;
     }
-  ): Promise<Task> {
+  ): Promise<UpdateTaskSuccessData> {
     await this.ensureInitialized();
     await this.reloadFromDisk();
 
@@ -544,8 +545,14 @@ export class TaskManager {
     // Apply updates
     Object.assign(task, updates);
 
+    // Generate message if needed
+    let message: string | undefined = undefined;
+    if (updates.status === 'done' && proj.autoApprove === false) {
+      message = `Task marked as done but requires human approval.\nTo approve, user should run: npx taskqueue approve-task -- ${projectId} ${taskId}`;
+    }
+
     await this.saveTasks();
-    return task;
+    return { task, message };
   }
 
   public async deleteTask(projectId: string, taskId: string): Promise<DeleteTaskSuccessData> {
