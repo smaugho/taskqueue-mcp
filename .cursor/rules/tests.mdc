@@ -3,4 +3,4 @@ description: Writing unit tests with `jest`
 globs: tests/**/*
 alwaysApply: false
 ---
-Make use of the helpers in tests/mcp/test-helpers.ts.
+Make use of the helpers in tests/mcp/test-helpers.ts for writing tests.
