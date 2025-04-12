@@ -135,7 +135,7 @@ export class TaskManager {
       projectPlan: projectPlan || initialPrompt,
       tasks: newTasks,
       completed: false,
-      autoApprove: autoApprove === true ? true : false,
+      autoApprove: autoApprove === false ? false : true,
     };
 
     this.data.projects.push(newProject);

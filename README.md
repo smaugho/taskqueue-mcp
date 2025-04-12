@@ -221,6 +221,7 @@ TaskManagerFile
     ├── initialPrompt: string        # Original user request text
     ├── projectPlan: string          # Additional project details
     ├── completed: boolean           # Project completion status
+    ├── autoApprove: boolean         # Set `false` to require manual user approval
     └── tasks: Task[]                # Array of tasks
         ├── id: string               # Format: "task-{number}"
         ├── title: string            # Short task title
