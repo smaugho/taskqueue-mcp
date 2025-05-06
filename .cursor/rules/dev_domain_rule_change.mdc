@@ -1,0 +1,20 @@
+---
+description: Workflow to follow for the Job / Project Category - Domain Rule Change
+globs:
+alwaysApply: false
+---
+
+```mermaid
+flowchart TD
+    A[Impact Analysis] -- Spawns Child Projects --> B(Child Projects: New Use Case);
+    A -- Creates Tasks --> PA[Parent Local Tasks];
+    B -- All Approved --> C(Global Verification & Close);
+    PA -- Parent Task Done --> PA_CommitConfirm{Confirm & Commit Parent Tasks};
+    PA_CommitConfirm --> C;
+
+    style C fill:#f9f,stroke:#333,stroke-width:2px
+```
+
+- **Task **`Impact Analysis`**: Identify all affected E2E scenarios; spawn child projects for new behaviour; create parent tasks to remove obsolete scenarios; record IDs in `completedDetails`.
+- **Task **`Remove Obsolete Scenario: [Name]`**: Delete obsolete test/code; validate; propose commit; await confirmation; commit; record hash.
+- **Task **`Global Verification & Close`**: Ensure all child projects and removal tasks are approved; run validation suite; finalize parent project after approval.

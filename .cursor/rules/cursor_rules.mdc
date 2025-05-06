@@ -1,0 +1,114 @@
+---
+description: Guidelines for creating and maintaining Cursor rules to ensure consistency and effectiveness.
+globs: .cursor/rules/*.mdc
+alwaysApply: false
+---
+
+- **Required Rule Frontmatter:**
+  - All rule files (`*.mdc`) **MUST** begin with a YAML frontmatter block (enclosed by `---`).
+  - This block defines metadata used by Cursor to manage the rule.
+  - **Valid Fields:**
+    - `description` (string, **required**): A clear, concise one-line description of the rule's purpose.
+    - `globs` (string | string[], **optional**): One or more file path patterns (using standard `.gitignore` glob syntax like `src/**/*.ts` or `**/package.json`). If specified, Cursor will automatically attach the rule to the context when files matching these patterns are referenced or edited. See [Gitignore Pattern Format](https://git-scm.com/docs/gitignore#_pattern_format).
+    - `alwaysApply` (boolean, **required**): 
+      - If `true`, the rule is always included in the context for the AI (an "Always" rule). This is suitable for core project standards or workflows.
+      - If `false`, the rule is only applied when automatically attached via `globs`, manually added by the user, or explicitly fetched by the AI (an "Auto-Attach" or "On-Demand" rule).
+  - **Example:**
+    ```yaml
+    ---
+    description: Enforces specific naming conventions for service classes.
+    globs: "src/services/**/*.service.ts, test/services/*.spec.ts"
+    alwaysApply: false
+    ---
+    ```
+  - **Note:** The `title` field is **not** used and should not be included in the frontmatter.
+
+- **Rule Content Structure:**
+  - Follow the frontmatter with the rule's content in Markdown.
+  - Use clear headings, bolding, bullet points, and code blocks as needed.
+  - **Main Points in Bold**
+    - Sub-points with details
+    - Examples and explanations
+
+- **File References:**
+  - Use `[filename](mdc:.cursor/rules/filename.mdc)` to reference rule files
+  - Example: For rule references, use `[rule_name.mdc](mdc:.cursor/rules/rule_name.mdc)`
+  - Example: For code references, use `[code_file.ts](mdc:path/to/code_file.ts)`
+
+- **Code Examples:**
+  - Use language-specific code blocks
+  ```typescript
+  // ✅ DO: Show good examples
+  const goodExample = true;
+  
+  // ❌ DON'T: Show anti-patterns
+  const badExample = false;
+  ```
+
+- **Rule Content Guidelines:**
+  - Start with high-level overview
+  - Include specific, actionable requirements
+  - Show examples of correct implementation
+  - Reference existing code when possible
+  - Keep rules DRY by referencing other rules
+
+- **Rule Maintenance:**
+  - Update rules when new patterns emerge
+  - Add examples from actual codebase
+  - Remove outdated patterns
+  - Cross-reference related rules
+
+- **Best Practices:**
+  - Use bullet points for clarity
+  - Keep descriptions concise
+  - Include both DO and DON'T examples
+  - Reference actual code over theoretical examples
+
+- **Required Rule Structure:**
+  # ```markdown
+  # ---
+  # description: Clear, one-line description of what the rule enforces
+  # # Use standard .gitignore glob patterns (https://git-scm.com/docs/gitignore#_pattern_format)
+  # globs: path/to/files/*.ext, other/path/**/specific_file.ts # Incorrect Format Example
+  # alwaysApply: boolean # If true, applies even if file not open/edited
+  # ---
+  # 
+  # - **Main Points in Bold**
+  #   - Sub-points with details
+  #   - Examples and explanations
+  # ```
+
+- **File References:**
+  - Use `[filename](mdc:.cursor/rules/filename.mdc)` to reference rule files
+  - Example: For rule references, use `[rule_name.mdc](mdc:.cursor/rules/rule_name.mdc)`
+  - Example: For code references, use `[code_file.ts](mdc:path/to/code_file.ts)`
+
+- **Code Examples:**
+  - Use language-specific code blocks
+  ```typescript
+  // ✅ DO: Show good examples
+  const goodExample = true;
+  
+  // ❌ DON'T: Show anti-patterns
+  const badExample = false;
+  ```
+
+- **Rule Content Guidelines:**
+  - Start with high-level overview
+  - Include specific, actionable requirements
+  - Show examples of correct implementation
+  - Reference existing code when possible
+  - Keep rules DRY by referencing other rules
+
+- **Rule Maintenance:**
+  - Update rules when new patterns emerge
+  - Add examples from actual codebase
+  - Remove outdated patterns
+  - Cross-reference related rules
+
+- **Best Practices:**
+  - Use bullet points for clarity
+  - Keep descriptions concise
+  - Include both DO and DON'T examples
+  - Reference actual code over theoretical examples
+  - Use consistent formatting across rules 

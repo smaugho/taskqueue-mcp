@@ -1,0 +1,36 @@
+---
+description: Workflow to follow for the Job / Project Category - Bug / Use‑Case Modification
+globs: 
+alwaysApply: false
+---
+
+```mermaid
+flowchart TD
+    A[Acceptance Test E2E - Red] --> B(Plan Review #1);
+    B -- Creates Tasks --> C[Component Batch #1 R/G/R];
+    C -- Changes Verified --> C_CommitConfirm{Confirm & Commit Batch #1};
+    C_CommitConfirm --> D(Plan Review #2);
+    D -- Creates Tasks --> E[Component Batch #2 R/G/R];
+    E -- Changes Verified --> E_CommitConfirm{Confirm & Commit Batch #2};
+    E_CommitConfirm --> F(...);
+    F --> G(Plan Review #n);
+    G -- Creates Task --> H[✅ Review Documentation];
+    H -- Docs Updated --> H_CommitConfirm{Confirm & Commit Documentation};
+
+    style B fill:#f9f,stroke:#333,stroke-width:2px
+    style D fill:#f9f,stroke:#333,stroke-width:2px
+    style G fill:#f9f,stroke:#333,stroke-width:2px
+```
+
+- **Task **`Acceptance Test (E2E) – Red`**: Write the high‑level failing E2E test(s) defining the desired user‑facing behaviour. **Tests MUST follow **`testing_strategy.mdc`** (behavioural focus, AAA structure, resilience).** Validate the expected failure and document it.
+- **Task **`Plan Review #n`**:
+    - **Run the primary Acceptance Test(s).**
+    - If they pass → Decide whether more work is needed **ONLY after perform the reference Gathering for New Tasks**. If not, propose a `Review Documentation` task; else propose the next `Component Batch` and `Plan Review`.
+    - If they fail → Analyse failures and propose the required `Component Batch #n+1 (Red/Green/Refactor)` plus next `Plan Review`.
+    - **Present the analysis and proposed plan to the human developer and await explicit confirmation.** After confirmation, add tasks with `mcp_taskqueue_add_tasks_to_project` and record details in `completedDetails`.
+- **Task **`Component Batch #n – Red/Green/Refactor`**: Classic TDD cycle strictly following `testing_strategy.mdc` (including lint checks 0 errors).
+    - **Red:** failing unit/integration test (state‑verification focus).
+    - **Green:** minimal production code to pass tests.
+    - **Refactor:** internal improvements, propose further test improvements for next Plan Review.
+    - After validation, **propose commit (include **`.tasks.json`) → await confirmation → commit → record hash.**
+- **Task **`Review Documentation`**: Update docs/rules, propose commit, await confirmation, commit, record hash.

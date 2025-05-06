@@ -14,7 +14,7 @@ alwaysApply: false
   - **Red Phase Validation:** After writing tests in the Red phase, you **MUST** run the tests to verify they fail as expected. This confirms that the tests correctly expect the behavior not yet implemented:
     ```bash
     # Example: Running specific tests for a new tool
-    npm run test:mcp -- -t "some test"
+    npm run test -- -t "some test"
     
     # The test output should show failures that match your expectations
     ```
@@ -54,9 +54,8 @@ alwaysApply: false
 - **Full Validation Suite:**
   - Before marking Green or Refactor phase tasks as `done`, run the complete validation suite to ensure code quality and prevent regressions.
   - The suite includes:
-    - **Linting:** `npm run lint` (if available)
     - **Building:** `npm run build`
-    - **MCP Tests:** `npm run test:mcp` (always run these tests, not the unit tests)
+    - **MCP Tests:** `npm run test`
   - All steps must pass.
 
 ## MCP Tool Development Requirements

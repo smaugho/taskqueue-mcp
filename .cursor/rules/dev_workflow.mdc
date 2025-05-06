@@ -1,96 +1,166 @@
 ---
-description: Guide for using TaskQueue MCP services for task-driven development workflows
-globs: **/*
+description: General development workflow using TaskQueue MCP services for managing AI‑assisted, human‑in‑the‑loop project and task execution, strongly recommending ATDD.
+globs:
 alwaysApply: true
 ---
-- **Introduction**
-  - This guide outlines the development workflow using the TaskQueue MCP (Model Context Protocol) services.
-  - TaskQueue MCP provides tools for AI agents (like Cursor) to manage projects and tasks in a structured manner, involving human confirmation before programmatic approval.
-  - **Contextual Clarification:** Within the `dstaff-aggregator` development process:
-    - A TaskQueue **"Project"** directly corresponds to a specific **"Step"** outlined in the development plan.
-    - The `initialPrompt` for the Project should be the Step's title.
-    - The `projectPlan` for the Project MUST contain:
-      - The full description associated with that Step in the development plan.
-      - A **Mermaid diagram** visualizing the step's core concepts, flows, or changes.
-      - **Diagram Guidelines:**
-        - Use Mermaid syntax.
-        - Visualize relevant flows, relationships, architectural changes, or component interactions.
-        - Choose the most appropriate diagram type (class, sequence, flowchart, component).
-        - Prioritize clarity, relevance, and highlighting changes/additions.
-        - If no diagram is genuinely applicable (should be rare), explicitly state "No diagram needed" instead.
-    - Correspondingly, **"Tasks"** are the individual actions required to complete that specific Project/Step, broken down into Red, Green, and Refactor phases as detailed below.
 
-- **Core Development Workflow**
-  1.  **Select Next Project:**
-      - Use `mcp_taskqueue_list_projects state='open'` to find the first project that is not yet completed. Prioritize working through projects sequentially based on their order in the list or creation time.
-      - If no open project exists for the desired workstream (e.g., a new feature or Step), create one using `mcp_taskqueue_create_project` or `mcp_taskqueue_generate_project_plan`. Ensure tasks follow the TDD structure defined below. Note the `projectId`.
-      - **Set the identified `projectId` as the current focus.**
-  2.  **Get Next Task:**
-      - Use `mcp_taskqueue_get_next_task` with the current `projectId` to retrieve the next available (non-approved) task *within that project*.
-  3.  **Understand the Task:**
-      - Use `mcp_taskqueue_read_task` with the `projectId` and `taskId` to get full details.
-      - Pay close attention to which TDD phase this task represents (Red, Green, Refactor) and its specific description.
-      - Review `toolRecommendations` and `ruleRecommendations` if provided.
-  4.  **Implement the Task (Execute TDD Phase):**
-      - Perform the specific work described for the current TDD phase (e.g., write a failing test, write implementation code, refactor). Adhere strictly to the goals of that phase as outlined in [testing_strategy.mdc](mdc:.cursor/rules/testing_strategy.mdc).
-      - **Red Phase Requirement:** After writing tests in the Red phase, you **MUST** run the tests to verify they fail as expected. Include the failing test results in the task's completedDetails when marking it as done. For example:
-        ```
-        # Run relevant tests
-        npm run test:mcp -- -t "some test"
-        ```
-      - **Validation:** For *Green* and *Refactor* phases, **before** marking the task as `done`, the AI agent MUST successfully run the **Full Validation Suite** as defined in [testing_strategy.mdc](mdc:.cursor/rules/testing_strategy.mdc) (lint, build, unit tests, e2e tests). Report the outcome to the human.
-        - **If the validation suite fails, the errors MUST be corrected, and the suite MUST be re-run successfully before proceeding.**
-  5.  **Mark Task as Done:**
-      - Once the specific phase's work is completed **and (for Green/Refactor phases) the Full Validation Suite passes**, use `mcp_taskqueue_update_task`.
-      - Set `status` to `'done'`.
-      - Provide a clear description of the work completed for *this phase* in the `completedDetails` field (this is required).
-      - **For Green and Refactor phases, the `completedDetails` MUST also include a summary of the Full Validation Suite results (e.g., 'Validation Suite: Lint Passed (`npm run lint`), Build Passed (`npm run build`), Unit Tests Passed (`npm test`), E2E Tests Passed (`npm run test:e2e`)').**
-  6.  **Await Human Confirmation & Approve Task:**
-      - Inform the human developer that the task (`taskId` for `projectId`) is marked 'done' and requires review.
-      - Ask the human developer for explicit confirmation that the work is approved.
-      - **Crucially, once the human provides confirmation, the AI agent MUST update the task's `completedDetails` using `mcp_taskqueue_update_task`, appending the confirmation details (e.g., appending "\n\n[Confirmation received from human: Approved]") to the existing content.**
-      - After successfully updating `completedDetails` with the confirmation, the AI agent MUST then call `mcp_taskqueue_approve_task` with the `projectId` and `taskId`.
-      - *The AI agent MUST wait for this confirmation and successful approval call before proceeding.*
-  7.  **Repeat for Tasks:**
-      - Go back to step 2 (`get_next_task`) to continue working through the tasks *of the current project* sequentially (Red -> Green -> Refactor for a given feature).
-  8.  **Finalize Project:**
-      - Once all tasks within the current project are `done` and `approved`, use `mcp_taskqueue_finalize_project` with the `projectId`.
-      - Return to Step 1 to select the *next* open project.
+# AI‑Assisted, Human‑in‑the‑Loop Development Workflow using TaskQueue MCP
 
-- **Task Creation Strategy (TDD)**
-  - Adherence to Test-Driven Development (TDD) is mandatory, as detailed in [testing_strategy.mdc](mdc:.cursor/rules/testing_strategy.mdc).
-  - **Any new piece of work (feature, bug fix, significant change) MUST be represented by exactly three sequential tasks:** one for each TDD phase.
-  - Use `mcp_taskqueue_create_task` or `mcp_taskqueue_add_tasks_to_project` to create these three tasks *together* when defining the work.
-  - **Naming Convention:**
-    - `Red Phase: [Original Task Title]`
-    - `Green Phase: [Original Task Title]`
-    - `Refactor Phase: [Original Task Title]`
-  - **Phase Descriptions:**
-    - **Red Phase:** The description must clearly state the goal is to write one or more tests that define the desired behavior or reproduce the bug. Crucially, these tests *must fail* initially, proving the behavior isn't already present. Specify *what* needs to be tested.
-    - **Green Phase:** The description must clearly state the goal is to write the *minimum* amount of functional code necessary to make the previously written test(s) pass. Focus solely on satisfying the test requirements.
-    - **Refactor Phase:** The description must clearly state the goal is to clean up and improve the code written in the Green Phase (e.g., improve readability, remove duplication, enhance performance) *without changing its external behavior*. All tests must continue to pass after refactoring. Identify specific areas for potential refactoring if known.
-  - These three tasks form a logical unit and should be worked on sequentially as per the Core Development Workflow.
+## Introduction
 
-- **Project Management Tools (MCP)**
-  - `mcp_taskqueue_list_projects`: Lists all projects (optionally filter by state: 'open', 'pending_approval', 'completed', 'all').
-  - `mcp_taskqueue_read_project`: Gets details for a specific `projectId`.
-  - `mcp_taskqueue_create_project`: Creates a new project with an `initialPrompt` and a list of `tasks`. Can set `autoApprove`.
-  - `mcp_taskqueue_generate_project_plan`: Uses an LLM (OpenAI, Google, Deepseek) to create a project plan and tasks from a `prompt` and optional `attachments`. Requires relevant API key env var.
-  - `mcp_taskqueue_delete_project`: Removes a project and its tasks by `projectId`.
-  - `mcp_taskqueue_update_project`: Update a project's `initialPrompt` and/or `projectPlan` fields.
-  - `mcp_taskqueue_add_tasks_to_project`: Adds new `tasks` to an existing `projectId`.
-  - `mcp_taskqueue_finalize_project`: Marks a project as complete (all tasks must be done and approved).
+- This guide outlines a general development workflow using the TaskQueue MCP (Model Context Protocol) services.
+- TaskQueue MCP provides tools for AI agents (like Cursor) to manage projects and tasks in a structured manner, involving human confirmation before programmatic approval.
+- **Optional Project Context:** You might adapt this workflow to your specific project‑planning methodology. For example:
+  - A TaskQueue **"Project"** MUST represent **exactly one Job / User Story**.
+  - The `initialPrompt` for the Project could be the Job title.
+  - The `projectPlan` for the Project **MUST** contain:
+    - The full description associated with that Job.
+    - A **Mermaid diagram** visualizing the work's core concepts, flows, or changes. (*Consider diagram guidelines like using Mermaid syntax, visualizing relevant aspects, choosing appropriate types, and prioritizing clarity.*)
+  - **"Tasks"** would then be the individual actions required to complete that specific Job, following the category‑specific workflow defined below.
 
-- **Task Management Tools (MCP)**
-  - `mcp_taskqueue_list_tasks`: Lists tasks for a `projectId` (optionally filter by state: 'open', 'pending_approval', 'completed', 'all').
-  - `mcp_taskqueue_read_task`: Gets details for a specific `taskId` within a `projectId`.
-  - `mcp_taskqueue_create_task`: Creates a single new task within a `projectId`.
-  - `mcp_taskqueue_update_task`: Modifies properties of a task (`title`, `description`, `status`, `completedDetails`, `toolRecommendations`, `ruleRecommendations`).
-  - `mcp_taskqueue_delete_task`: Removes a task by `taskId` from a `projectId`.
-  - `mcp_taskqueue_get_next_task`: Gets the next task (first non-approved) for a `projectId`.
-  - `mcp_taskqueue_approve_task`: Approves a completed task. This MUST only be called after verifying human confirmation within the task's `completedDetails` (see step 6). Requires `projectId` and `taskId`.
+## Project Tooling
 
-- **Task Status Management**
+- **Package Management:** All project dependencies MUST be managed using `npm`. Use `npm install [--dev]` to add dependencies and ensure the `package-lock.json` file is committed.
+- **Task Runner:** Project tasks (linting, building, testing) are defined in `package.json` scripts and should be run using `npm run <script_name>`.
+
+---
+
+## Job / Project Categories & Default Workflows
+
+Every TaskQueue **Project** represents **exactly** one **Job / User Story**. Depending on the nature of that Job, the internal task list follows a different high‑level flow. The table below summarises the recommended skeleton for each category – later sections reference these names.
+
+| Category                                 | Typical Trigger                                                   | Primary Driver    | Default Task Skeleton                                                                                                                                      |
+| ---------------------------------------- | ----------------------------------------------------------------- | ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **New Use Case**                         | Brand‑new behaviour / feature                                     | ATDD – Outside‑In | 1️⃣ Acceptance Test – Red → 2️⃣ Plan Review #1 → 3️⃣ Component Batch #1 (R/G/R + CommitConfirm) → … iterate → ✅ Review Documentation + CommitConfirm |
+| **Bug / Use‑Case Modification**          | Defect or changed requirement                                     | TDD (Plan First)  | 1️⃣ Plan Review #1 → 2️⃣ Component Batch #1 (R/G/R + CommitConfirm) → … iterate → ✅ Review Documentation + CommitConfirm                                   |
+| **Domain Rule Change**                   | Business‑rule evolution                                           | Meta‑coordination | 1️⃣ Impact Analysis → spawn child **New Use Case** projects → local removals + CommitConfirm → ✅ Global Verification & Close                               |
+| **Internal Workflow / Refactor / Chore** | Tech‑debt, infra swap, renaming, style fixes, cleanup, doc/config | Refactor Workflow | 1️⃣ Plan Review #1 → 2️⃣ Component Batch #1 (Net✔/Ref✂/Ver🟢 + CommitConfirm) → … iterate (acceptance test safeguard) → ✅ Review Documentation + CommitConfirm         |
+
+> **Task Titles & Descriptions** – Always phrase tasks in terms of *observable user value* (e.g. *"CLI lists metrics grouped by project"*). Avoid naming concrete classes or functions unless strictly unavoidable.
+
+---
+
+## Core Development Workflow
+
+1.  **Select Next Project**
+
+    - Use `mcp_taskqueue_list_projects state='open'` to find the first project that is not yet completed. Prioritize working through projects sequentially based on their order in the list or creation time.
+    - If no open project exists for the desired work‑stream (e.g., a new feature or Step), create one using `mcp_taskqueue_create_project` or `mcp_taskqueue_generate_project_plan`. **Ensure the initial tasks follow the appropriate Category Workflow skeleton defined below.** Note the `projectId`.
+    - **Set the identified **`projectId`** as the current focus.**
+    - **Before starting work:** Use `mcp_taskqueue_read_project` with the selected `projectId` and present the full project details (initial prompt, plan, diagram, and task list) to the human developer for context and confirmation to proceed.
+
+2.  **Get Next Task**
+
+    - Use `mcp_taskqueue_get_next_task` with the current `projectId` to retrieve the next available (non‑approved) task *within that project*.
+
+3.  **Understand the Task**
+
+    - Use `mcp_taskqueue_read_task` with the `projectId` and `taskId` to get full details.
+    - **Identify the Project Category** (from `projectPlan` or task structure) and **the specific step within that category's workflow** the task represents (e.g., "Acceptance Test – Red", "Plan Review #1", "Component Batch #1 – Green", "Impact Analysis").
+    - Review `toolRecommendations` and `ruleRecommendations` if provided. **For Refactor and Review Documentation tasks, this includes ensuring all relevant quality, style, and pattern rules are considered.**
+    - **Consult embedded Category & Reference blocks:** Every task begins with a Category section copy and a reference list. **Read that Category related rule IN FULL, fetching the relevant rule using `fetch_rule`** (it governs exactly how to implement the task). Then **open each referenced code file using the **`read_file`** tool** and **open each web link using the **`web_search`** tool** listed in the reference block:
+        - If a referenced file shows an existing or near‑identical solution, surface this to the human developer to avoid duplication.
+        - Use patterns from referenced files or articles to guide your implementation, tests, and naming.
+    - Only after reading the Category rules **and** all references should you begin planning the task implementation.**
+
+4.  **Implement the Task (Execute Category Workflow Step)**
+
+    - **Testing Layer Note:** When adding new tests (e.g., in the Red phase of a Component Batch not driven by an acceptance test failure), add the test at the **lowest appropriate layer** (Unit or Integration). Follow the guidance in `testing_strategy.mdc` (prefer state/value verification over collaboration verification).
+    - **Task‑Change Note:** If the task description needs modification *during* implementation, **present the proposed changes to the human developer and wait for explicit confirmation** before calling `mcp_taskqueue_update_task`. The same rule applies to future tasks: always fetch (`mcp_taskqueue_read_task`) then update (`mcp_taskqueue_update_task`) only after confirmation.
+    - **Proceed according to the Project Category and task type:**
+
+### Category: New Use Case
+
+Refer to the rule `dev_new_use_case.mdc`, it MUST be read in FULL.
+
+
+### Category: Bug / Use‑Case Modification
+
+Refer to the rule `dev_bug_use_case_modification.mdc`, it MUST be read in FULL.
+
+
+### Category: Domain Rule Change
+
+Refer to the rule `dev_domain_rule_change.mdc`, it MUST be read in FULL.
+
+
+### Category: Internal Workflow / Refactor / Chore
+
+Refer to the rule `dev_internal_workflow_refactor_chore.mdc`, it MUST be read in FULL.
+
+---
+
+### Validation and Commands (all Categories)
+
+Before marking any task that **includes a commit** as `done`, run the following **sequentially** and receive human confirmation for the proposed commit:
+
+- **Tests:** `npm test` (must pass).
+- For `Red` tasks: validate expected failures.
+- For `Plan Review`: validate analysis and tests as specified.
+- Record results and commit confirmation/hash in `completedDetails`.
+
+---
+
+5.  **Mark Task as Done**
+
+    - After work & validations pass **and** the commit (if any) is confirmed and performed, call `mcp_taskqueue_update_task` (`status='done'`) with full `completedDetails` (validation results, analysis, links, commit hash, etc.).
+
+6.  **Await Human Confirmation & Approve Task**
+
+    - Present the final task details (`mcp_taskqueue_read_task`), ask for explicit approval.
+    - Record approval in `completedDetails`, then call `mcp_taskqueue_approve_task`.
+    - **Commit Action:** Commits happen *inside* specific tasks after confirmation; approval seals the task.
+    - **Finalize Trigger:** The project is finalized only after the **last task** is approved.
+
+7.  **Repeat for Tasks** – Return to **Step 2** (`get_next_task`) until all tasks in the project are complete.
+
+8.  **Finalize Project** – Call `mcp_taskqueue_finalize_project` when the project's final task is approved, then return to **Step 1** to pick the next open project.
+
+---
+
+## Reporting Current Status
+
+- Determine current `projectId` and in‑progress task (`mcp_taskqueue_read_task`). Present title, description, status, phase, and the project's `initialPrompt`. If nothing is in progress, state that and advise running **Step 2**.
+
+## Task Creation Strategy
+
+- **Starting a New Project**
+    - **New Use Case:** Begin with `Acceptance Test – Red` + `Plan Review #1`.
+    - **Bug / Use‑Case Modification:** Begin with `Plan Review #1`.
+    - **Domain Rule Change:** Begin with `Impact Analysis` + `Global Verification & Close`.
+    - **Internal Workflow / Refactor / Chore:** Begin with `Plan Review #1`.
+- **Task Naming:** Follow naming conventions (`Component Batch #1 – Red`, etc.); parent tasks in *Domain Rule Change* use descriptive titles (`Remove Obsolete Scenario: …`).
+- **Task Descriptions:** Clearly state goal, expected outcome, validation, and commit‑confirmation steps.
+- **Embed Category Reference:**
+    - **When any task is created** (via `mcp_taskqueue_create_project` *or* `mcp_taskqueue_add_tasks_to_project`), the AI **MUST identify the project's category**.
+    - Based on the category, the AI **MUST locate and read the corresponding workflow rule file**.
+    - The AI **MUST include a reference** to this specific rule file at the beginning of the task description using the format `[rule_filename.mdc](mdc:.cursor/rules/rule_filename.mdc)`.
+    - **Examples:**
+        - For category "Domain Rule Change", reference `[dev_domain_rule_change.mdc](mdc:.cursor/rules/dev_domain_rule_change.mdc)`.
+        - For category "Internal Workflow / Refactor / Chore", reference `[dev_internal_workflow_refactor_chore.mdc](mdc:.cursor/rules/dev_internal_workflow_refactor_chore.mdc)`.
+        - For other categories (e.g., "New Use Case", "Bug / Use‑Case Modification"), find and reference the relevant rule file following the naming convention `dev_<category_slug>.mdc` or similar.
+    - After inserting the rule file reference, insert a horizontal rule (`---`).
+    - Below that rule, it should be inserted all the references one by one, and insert another horizontal rule (`---`).
+    - Below that rule, write the *task‑specific content* (title, context, acceptance criteria, validation commands, etc.).
+- **Reference Gathering for New Tasks:**
+    1. **Code‑base search:** Before adding any new task, run `codebase_search` and `grep_search` and `file_search` —repeat with varied queries if necessary, run all of them— to locate existing files, tests, or implementations that match or closely resemble the requested work.
+    2. **Similarity expansion:** If no direct match appears, broaden the search scope (different file types, neighbouring modules, semantic synonyms, etc.) and issue additional searches to surface *related* examples.
+    3. **Web references:** When the code‑base truly contains no relevant material, perform `web_search` (multiple queries are recommended) and gather authoritative links that showcase a comparable pattern or solution.
+    4. **Mandatory reference block:** The created task **must embed at least one reference** —preferably from the project itself; if unavailable, from the web— immediately beneath the category reference and above the *task-specific content*.
+    5. **Duplication guard:** If the searches reveal an existing or nearly identical solution, highlight this to the human developer to prevent duplicating functionality and to encourage reuse or refactor.
+    6. **Task execution:** When later interpreting the task, the agent must consult *all* embedded references (READ EACH ONE of the files and FOLLOW EACH ONE the links) and then carry out the Category‑specific instructions verbatim.
+    - **Reference Formatting:**
+        - **File References:** List relevant files using relative paths from the project root, formatted as markdown links: `[path/to/relevant/file.ext](path/to/relevant/file.ext)`.
+        - **Web References:** List relevant URLs formatted as markdown links: `[Descriptive Title](https://example.com/relevant-page)`.
+- **Preserving Embedded Reference on Updates:**
+    - Whenever a task is modified through `mcp_taskqueue_update_task`, the embedded Category reference **must remain exactly as it was inserted**.
+    - Whenever a task is modified through `mcp_taskqueue_update_task`, the referenced block **must remain exactly as it was inserted**.
+    - Only the content *below* the separator (`---`) may be altered (e.g., clarifying the task, adding details). If new references are discussed (including files or urls), they MUST be added to the already existing references.
+- **CRITICAL: Human Approval Required:** **NO** task may be created (via `mcp_taskqueue_create_project` or `mcp_taskqueue_add_tasks_to_project`) **without explicit human approval**. Before calling any of these functions, the proposed task content (including title, description, references, etc.) **MUST** be presented to the human developer for review. Proceed **ONLY** after receiving explicit confirmation. This approval step is mandatory and cannot be skipped under any circumstances.
+
+
+## Task Status Management
+
   - **States:**
     - `not started`: Task has not been started.
     - `in progress`: Task is actively being worked on.
@@ -106,38 +176,3 @@ alwaysApply: true
     - After recording confirmation, the AI agent uses `mcp_taskqueue_approve_task` to finalize approval.
     - Approved tasks cannot be modified.
     - Projects can only be finalized when all tasks are `done` and `approved`.
-
-- **Displaying Project/Task Information**
-  - When presenting the status of a Project (representing a development Step) and its Tasks to the user, the AI agent should format the output to closely resemble the structure used for documenting Steps.
-  - This means displaying:
-    - The Project's `initialPrompt` as the main heading (e.g., `## [Project Title]`).
-    - Tasks grouped under their respective phase headings (Red, Green, Refactor).
-    - For each task: its status (e.g., ✅/⬜), its title, and its **full description**.
-    - The Project's `projectPlan` (containing the original step description and Mermaid diagram) should typically be displayed separately at the end or beginning for overall context.
-  - Example Structure:
-    ```markdown
-       ## [Project Initial Prompt]
-
-       **Project Plan**
-       [Project Plan content, including Mermaid Diagram]
-
-       ### Red Phase
-       - ✅ **[Task 1 Title]**
-         [Full Task 1 Description]
-       - ✅ **[Task 2 Title]**
-         [Full Task 2 Description]
-       - ⬜ **[Task 3 Title]**
-         [Full Task 3 Description]
-
-       ### Green Phase
-       - ⬜ **[Task 1 Title]**
-         [Full Task 1 Description]
-       - ⬜ **[Task 2 Title]**
-         [Full Task 2 Description]
-
-       ### Refactor Phase
-       - ⬜ **[Task 1 Title]**
-         [Full Task 1 Description]
-       - ⬜ **[Task 2 Title]**
-         [Full Task 2 Description]
-    ```

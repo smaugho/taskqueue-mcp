@@ -1,0 +1,41 @@
+---
+description: Defines the process for verifying the accuracy and consistency of all Cursor rule files.
+globs: **/*.mdc
+alwaysApply: false
+---
+
+# Rule Verification Process
+
+When requested by the user to verify the rules, the AI agent MUST perform the following checks for **each** rule file in `.cursor/rules/` (or the project's specified rule directory, excluding this file itself):
+
+1.  **Structure Verification:**
+    - Ensure the file contains the required frontmatter (`description`, `globs`, `alwaysApply`).
+    - Check if the `globs` pattern seems appropriate for the rule's content (not excessively broad or incorrectly narrow).
+    - Confirm the content follows the basic markdown structure outlined in [cursor_rules.mdc](mdc:.cursor/rules/cursor_rules.mdc) (bolding, bullet points, code blocks where applicable).
+
+2.  **Path & Link Verification:**
+    - **File/Directory Paths:** Identify all explicit file or directory paths mentioned within the rule's content (e.g., `src/tools/platforms/features/`, `tests/e2e/`).
+        - Use `list_dir` or similar tools to verify that these paths actually exist in the workspace.
+        - Report any non-existent paths as inconsistencies.
+    - **Internal Rule Links:** Identify all links to other rules (e.g., `[rule.mdc](mdc:.cursor/rules/rule.mdc)`).
+        - Verify that the target rule file exists.
+        - Report any broken links.
+    - **Code Links:** Identify all links to specific code files (e.g., `[user.ts](mdc:src/tools/platforms/features/user.ts)`).
+        - Verify that the target code file exists.
+        - Report any broken links.
+    - **External Links:** Note any external URLs (e.g., documentation links). While automatic validation isn't feasible, report them for manual user verification if requested.
+
+3.  **Content & Consistency Verification:**
+    - **Identify Key Claims:** Extract the main assertions or guidelines the rule makes about code structure, architecture, workflow, or specific implementations (e.g., \"Service X transforms data\", \"Feature Y is defined in file Z\", \"Mocking handlers must use internal state\").
+    - **Targeted Code Review:** For rules making specific claims about code:
+        - Read the relevant code file(s) targeted by the rule\'s `globs` or mentioned in its claims (e.g., read `[ExampleService.ts]` if the rule discusses its responsibilities).
+        - Compare the code\'s actual implementation against the rule\'s claims.
+        - **Example:** If `[example_service_rule.mdc]` claims the service transforms data, check if the `[ExampleService.ts]` code actually performs transformations between internal models and external DTOs.
+        - **Example:** If `[example_mocking_rule.mdc]` claims handlers mimic external DTOs, read a handler file and the corresponding external DTO definition (if available) to confirm.
+    - **Cross-Rule Consistency:** Check if the claims made in one rule contradict claims made in another related rule.
+    - **Report Discrepancies:** Clearly report any inconsistencies found between the rule's claims and the actual code or between different rules.
+
+4.  **Reporting:**
+    - Summarize the findings for each rule checked.
+    - List all identified inconsistencies (broken links, incorrect paths, content mismatches) clearly.
+    - Suggest specific actions to fix the inconsistencies. 

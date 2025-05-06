@@ -1,0 +1,29 @@
+---
+description: Workflow to follow for the Job / Project Category - Domain Rule Change
+globs:
+alwaysApply: false
+---
+
+```mermaid
+flowchart TD
+    A(Plan Review #1) --> B[Component Batch #1 Safety Net ✔];
+    B --> B_refactor[Component Batch #1 Refactor ✂];
+    B_refactor --> B_reverify[Component Batch #1 Re-verify 🟢];
+    B_reverify -- Changes Verified --> B_CommitConfirm{Confirm & Commit Batch #1};
+    B_CommitConfirm --> C(Plan Review #2);
+    C --> D[Component Batch #2 ...];
+    D --> E(...);
+    E --> F(Plan Review #n);
+    F --> G[✅ Review Documentation];
+    G -- Docs Updated --> G_CommitConfirm{Confirm & Commit Documentation};
+
+    style A fill:#f9f,stroke:#333,stroke-width:2px
+    style C fill:#f9f,stroke:#333,stroke-width:2px
+    style F fill:#f9f,stroke:#333,stroke-width:2px
+```
+
+- **Task **`Plan Review #n`**: Define next refactor batch, run full test suite + safeguard E2E, analyse outcome, propose next tasks **ONLY after perform the reference Gathering for New Tasks** or `Review Documentation`; present & await confirmation; add tasks & record on approval.
+- **Task **`Component Batch #n – Safety Net ✔`**: Create/confirm characterisation tests; ensure all pass.
+- **Task **`Component Batch #n – Refactor ✂`**: Behaviour‑preserving internal improvements; note potential test improvements for next Plan Review.
+- **Task **`Component Batch #n – Re-verify 🟢`**: Re‑run tests; propose commit; await confirmation; commit; record hash.
+- **Task **`Review Documentation`**: Update docs/rules; propose commit; await confirmation; commit; record hash.
