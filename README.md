@@ -109,6 +109,84 @@ The TaskManager now uses a direct tools interface with specific, purpose-built t
 - `get_next_task`: Gets the next pending task in a project
 - `mark_task_done`: Marks a task as completed with details
 
+## IDE Status Tracking (`current_status.mdc`)
+
+To aid AI agents (like Cursor) in maintaining context about the currently active project and task within an IDE session, `taskqueue-mcp` supports an optional status tracking feature.
+
+### Activation
+
+This feature is activated when the `CURRENT_PROJECT_PATH` environment variable is set when running the `taskqueue-mcp` server (e.g., within your MCP client configuration like Cursor's `mcp.json`). This variable should point to the root directory of your current development project.
+
+```json
+// Example for .cursor/mcp.json
+{
+  "tools": {
+    "taskqueue": {
+      "command": "npx",
+      "args": ["-y", "taskqueue-mcp"],
+      "env": {
+        "CURRENT_PROJECT_PATH": "/path/to/your/current/project_root"
+        // ... other env vars like API keys ...
+      }
+    }
+  }
+}
+```
+
+### `current_status.mdc` File
+
+When `CURRENT_PROJECT_PATH` is set, `taskqueue-mcp` will automatically create or update a file at the following location within your project:
+
+`<CURRENT_PROJECT_PATH>/.cursor/rules/current_status.mdc`
+
+This file is a Cursor rule (`.mdc`) that an AI can always refer to, providing it with real-time information about:
+
+- The currently active **Project** (name and plan details).
+- The currently active **Task** (title and description).
+
+**Content Example:**
+
+```markdown
+---
+adescription: Status of the current task
+globs:
+alwaysApply: true
+---
+
+# Project
+
+Project Name: Implement User Authentication
+Project Detail:
+   Develop a secure user authentication system using JWT and bcrypt.
+   Includes registration, login, and password reset flows.
+
+# Task
+
+Title: Create login endpoint
+Description:
+   Develop the POST /api/auth/login endpoint.
+   It should validate credentials and return a JWT.
+```
+
+If no project or task is active (e.g., a task is set to "not started" or a project is finalized), the respective section in the file will show "None".
+
+### Update Triggers
+
+The `current_status.mdc` file is updated when:
+
+- A task's status changes to `in progress` (file reflects the new active task).
+- A task's status changes to `not started` (Task section becomes "None").
+- A project is finalized (Project and Task sections become "None").
+
+### Gitignore Recommendation
+
+Since `.cursor/rules/current_status.mdc` is specific to a developer's local environment and current focus, it **should be added to your project's `.gitignore` file** to prevent it from being committed to version control.
+
+Example for `.gitignore`:
+```
+/.cursor/rules/current_status.mdc
+```
+
 ### Task Status and Workflows
 
 Tasks have a status field that can be one of:

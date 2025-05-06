@@ -19,6 +19,8 @@ import {
 import { AppError, AppErrorCode } from "../types/errors.js";
 import { FileSystemService } from "./FileSystemService.js";
 import { generateObject, jsonSchema } from "ai";
+import { writeFile, mkdir } from 'node:fs/promises';
+import { formatStatusFileContent } from '../utils/statusFileFormatter.js';
 
 // Default path follows platform-specific conventions
 const DEFAULT_PATH = path.join(FileSystemService.getAppDataDir(), "tasks.json");
@@ -356,6 +358,8 @@ export class TaskManager {
     }
 
     proj.completed = true;
+    await this._updateCurrentStatusFile(null, null);
+
     await this.saveTasks();
 
     return {
@@ -544,6 +548,11 @@ export class TaskManager {
     // Apply updates
     Object.assign(task, updates);
 
+    // Pass IDs instead of potentially stale objects
+    // Determine the correct taskId to pass based on the *final* status
+    const finalTaskIdForStatusFile = task.status === 'not started' ? null : taskId;
+    await this._updateCurrentStatusFile(projectId, finalTaskIdForStatusFile);
+
     await this.saveTasks();
     return task;
   }
@@ -652,5 +661,40 @@ export class TaskManager {
       autoApprove: project.autoApprove,
       tasks: project.tasks,
     };
+  }
+
+  /**
+   * Updates the current_status.mdc file based on the provided project and task IDs.
+   * Only active if CURRENT_PROJECT_PATH environment variable is set.
+   */
+  private async _updateCurrentStatusFile(projectId: string | null, taskId: string | null): Promise<void> {
+    const currentProjectPath = process.env.CURRENT_PROJECT_PATH;
+    if (!currentProjectPath) {
+      return; // Feature is inactive if env var is not set
+    }
+
+    // Find the project and task data fresh from the in-memory store
+    let projectData: Project | null = null;
+    let taskData: Task | null = null;
+
+    if (projectId) {
+        projectData = this.data.projects.find(p => p.projectId === projectId) ?? null;
+        if (projectData && taskId) {
+            taskData = projectData.tasks.find(t => t.id === taskId) ?? null;
+        }
+    }
+    
+    const statusFilePath = path.join(currentProjectPath, '.cursor', 'rules', 'current_status.mdc');
+    const rulesDir = path.dirname(statusFilePath);
+
+    // Generate content using the new utility function
+    const content = formatStatusFileContent(projectData, taskData);
+
+    try {
+      await mkdir(rulesDir, { recursive: true });
+      await writeFile(statusFilePath, content, 'utf-8');
+    } catch (error) {
+      console.error(`[TaskManager] Failed to update ${statusFilePath}:`, error);
+    }
   }
 } 

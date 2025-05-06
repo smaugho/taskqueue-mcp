@@ -4,7 +4,8 @@
         "command": "node",
         "args": ["<path-to-this-project-folder>\\dist\\src\\server\\index.js"],
         "env": {
-          "TASK_MANAGER_FILE_PATH": "<path-to-your-project-root>\\tasks.json"
+          "TASK_MANAGER_FILE_PATH": "<path-to-your-project-root>\\tasks.json",
+          "CURRENT_PROJECT_PATH": "<path-to-your-project-root>"
         }
       }
     }

@@ -298,4 +298,36 @@ export async function createTestTaskInFile(filePath: string, projectId: string, 
   project.tasks.push(newTask);
   await writeTaskManagerFile(filePath, data);
   return newTask;
-} 
+}
+
+// New Helpers Start
+
+/**
+ * Reads a file if it exists, returns its content as a string, or null if it does not exist.
+ * Throws other file system errors.
+ */
+export async function readFileIfExists(filePath: string): Promise<string | null> {
+  try {
+    return await fs.readFile(filePath, 'utf-8');
+  } catch (error: any) {
+    if (error.code === 'ENOENT') {
+      return null;
+    }
+    throw error;
+  }
+}
+
+/**
+ * Asserts that a file does not exist at the given path.
+ */
+export async function assertFileDoesNotExist(filePath: string): Promise<void> {
+  const content = await readFileIfExists(filePath);
+  expect(content).toBeNull();
+}
+
+/**
+ * Ensures that a directory exists, creating it if necessary (including parent directories).
+ */
+export async function ensureDirExists(dirPath: string): Promise<void> {
+  await fs.mkdir(dirPath, { recursive: true });
+}
