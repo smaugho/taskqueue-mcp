@@ -6,6 +6,8 @@ alwaysApply: true
 
 # AI‑Assisted, Human‑in‑the‑Loop Development Workflow using TaskQueue MCP
 
+For any reference below, the "human" or "human" developer is always referring to the **role: user**. Waiting for a human means to pause all further actions until you receive a message from the human developer (**role: user**)
+
 ## Introduction
 
 - This guide outlines a general development workflow using the TaskQueue MCP (Model Context Protocol) services.

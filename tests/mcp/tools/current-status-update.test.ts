@@ -136,7 +136,11 @@ describe('current_status.mdc Updates Feature (E2E Acceptance)', () => {
           ...updatedTask,
           status: updatedTask.status as "not started" | "in progress" | "done",
         };
-        expect(content).toEqual(formatStatusFileContent(projectForFormatter, taskForFormatter));
+        const expectedContent = formatStatusFileContent(
+          { ...projectForFormatter, completedTasks: 0, totalTasks: 1 },
+          taskForFormatter
+        );
+        expect(content).toEqual(expectedContent);
       });
 
       it('should create .cursor/rules directory if it does not exist when creating current_status.mdc', async () => {
@@ -153,7 +157,11 @@ describe('current_status.mdc Updates Feature (E2E Acceptance)', () => {
         
         const projectForFormatter: StatusFileProjectData = { initialPrompt: project.initialPrompt, projectPlan: project.projectPlan };
         const taskForFormatter: StatusFileTaskData = { ...updatedTask, status: updatedTask.status as "not started" | "in progress" | "done" };
-        expect(content).toEqual(formatStatusFileContent(projectForFormatter, taskForFormatter));
+        const expectedContent = formatStatusFileContent(
+          { ...projectForFormatter, completedTasks: 0, totalTasks: 1 },
+          taskForFormatter
+        );
+        expect(content).toEqual(expectedContent);
       });
     });
 
@@ -179,7 +187,11 @@ describe('current_status.mdc Updates Feature (E2E Acceptance)', () => {
 
         const projectForFormatter: StatusFileProjectData = { initialPrompt: updatedProj.initialPrompt, projectPlan: updatedProj.projectPlan };
         const taskForFormatter: StatusFileTaskData = { ...updatedTask, status: updatedTask.status as "not started" | "in progress" | "done" };
-        expect(content).toEqual(formatStatusFileContent(projectForFormatter, taskForFormatter));
+        const expectedContent = formatStatusFileContent(
+          { ...projectForFormatter, completedTasks: 0, totalTasks: 1 },
+          taskForFormatter
+        );
+        expect(content).toEqual(expectedContent);
       });
 
       it('should overwrite existing content when task becomes "in progress"', async () => {
@@ -198,7 +210,11 @@ describe('current_status.mdc Updates Feature (E2E Acceptance)', () => {
 
         const projectForFormatter: StatusFileProjectData = { initialPrompt: project.initialPrompt, projectPlan: project.projectPlan };
         const taskForFormatter: StatusFileTaskData = { ...updatedTask, status: updatedTask.status as "not started" | "in progress" | "done" };
-        expect(content).toEqual(formatStatusFileContent(projectForFormatter, taskForFormatter));
+        const expectedContent = formatStatusFileContent(
+          { ...projectForFormatter, completedTasks: 0, totalTasks: 1 },
+          taskForFormatter
+        );
+        expect(content).toEqual(expectedContent);
       });
     });
 
@@ -226,7 +242,65 @@ describe('current_status.mdc Updates Feature (E2E Acceptance)', () => {
 
         const p2DataForFormatter: StatusFileProjectData = { initialPrompt: p2Data.initialPrompt, projectPlan: p2Data.projectPlan };
         const t2DataUpdatedForFormatter: StatusFileTaskData = { ...t2DataUpdated, status: t2DataUpdated.status as "not started" | "in progress" | "done" };
-        expect(content).toEqual(formatStatusFileContent(p2DataForFormatter, t2DataUpdatedForFormatter));
+        const expectedContent = formatStatusFileContent(
+          { ...p2DataForFormatter, completedTasks: 0, totalTasks: 1 },
+          t2DataUpdatedForFormatter
+        );
+        expect(content).toEqual(expectedContent);
+      });
+    });
+
+    describe('Rule Excerpt Expansion (E2E)', () => {
+      it('should read a linked rule file and include its content in current_status.mdc', async () => {
+        const ruleFileName = 'test-rule.mdc';
+        const ruleFileContent = 'This is the content of the test rule.';
+        const taskDescriptionWithRuleLink = `Task description linking to [${ruleFileName}](mdc:.cursor/rules/${ruleFileName}).`;
+
+        // 1. Setup: Create the rule file
+        const rulesDirPath = getRulesDir(currentProjectPath);
+        await ensureDirExists(rulesDirPath);
+        const ruleFilePath = path.join(rulesDirPath, ruleFileName);
+        await fs.writeFile(ruleFilePath, ruleFileContent);
+
+        // 2. Create project and task with link to the rule
+        const { project, task } = await setupProjectAndTaskInFile(contextActive, 
+          { initialPrompt: "Rule Test Proj", projectPlan: "Rule Test Plan" }, 
+          { title: "Rule Test Task", description: taskDescriptionWithRuleLink }
+        );
+
+        // 3. Trigger status update
+        await contextActive.client.callTool({
+          name: "update_task",
+          arguments: { projectId: project.projectId, taskId: task.id, status: 'in progress' }
+        });
+
+        // 4. Assertions
+        const statusFileContent = await readFileIfExists(getStatusFilePath(currentProjectPath));
+        
+        const projResult = await contextActive.client.callTool({name: "read_project", arguments: { projectId: project.projectId }}) as CallToolResult;
+        const updatedProj = verifyToolSuccessResponse<Project>(projResult);
+        const taskResult = await contextActive.client.callTool({name: "read_task", arguments: { projectId: project.projectId, taskId: task.id }}) as CallToolResult;
+        const updatedTask = (verifyToolSuccessResponse<any>(taskResult)).task;
+
+        const projectForFormatter: StatusFileProjectData = { 
+          initialPrompt: updatedProj.initialPrompt, 
+          projectPlan: updatedProj.projectPlan,
+          completedTasks: 0,
+          totalTasks: 1,
+        };
+        const taskForFormatter: StatusFileTaskData = { 
+          ...updatedTask, 
+          status: updatedTask.status as "not started" | "in progress" | "done",
+          relevantRuleFilename: ruleFileName, // This should be picked up by TaskManager
+          relevantRuleExcerpt: ruleFileContent, // This should be picked up by TaskManager
+        };
+        
+        const expectedContent = formatStatusFileContent(
+          projectForFormatter,
+          taskForFormatter
+        );
+
+        expect(statusFileContent).toEqual(expectedContent);
       });
     });
   });

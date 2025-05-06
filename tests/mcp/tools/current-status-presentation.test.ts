@@ -323,4 +323,92 @@ describe('Current Status Rule File Formatting', () => {
       expect(content).toContain(`Description:${EOL}${expectedTaskDescIndented}`);
     });
   });
+
+  describe('Rule Excerpt Formatting', () => {
+    it('should add Relevant Rule Excerpt section when filename and excerpt are provided', () => {
+      // Arrange
+      const task: StatusFileTaskData = {
+        title: 'Task with Rule', 
+        description: '[some_rule.mdc](mdc:./.cursor/rules/some_rule.mdc)', 
+        status: 'in progress', 
+        approved: false, 
+        completedDetails: "",
+        relevantRuleFilename: 'some_rule.mdc',
+        relevantRuleExcerpt: 'Rule line 1\nRule line 2'
+      };
+      const expectedExcerptIndented = task.relevantRuleExcerpt 
+        ? `   ${task.relevantRuleExcerpt.replace(/\n/g, `${EOL}   `)}` 
+        : ''; 
+
+      // Act
+      const content = formatStatusFileContent(null, task);
+
+      // Assert
+      // Make assertion more specific: check for header AND indented content together
+      const expectedSection = `# Relevant Rule Excerpt (${task.relevantRuleFilename})${EOL}${EOL}${expectedExcerptIndented}`;
+      expect(content).toContain(expectedSection);
+    });
+
+    it('should NOT add Relevant Rule Excerpt section if excerpt is missing', () => {
+      // Arrange
+      const task: StatusFileTaskData = {
+        title: 'Task without Excerpt', 
+        description: 'No rule ref', 
+        status: 'in progress', 
+        approved: false, 
+        completedDetails: "",
+        relevantRuleFilename: 'some_rule.mdc', 
+        // relevantRuleExcerpt: undefined 
+      };
+
+      // Act
+      const content = formatStatusFileContent(null, task);
+
+      // Assert
+      expect(content).not.toContain('# Relevant Rule Excerpt');
+    });
+
+    it('should NOT add Relevant Rule Excerpt section if filename is missing', () => {
+      // Arrange
+      const task: StatusFileTaskData = {
+        title: 'Task without Filename', 
+        description: 'No rule ref', 
+        status: 'in progress', 
+        approved: false, 
+        completedDetails: "",
+        // relevantRuleFilename: undefined,
+        relevantRuleExcerpt: 'Some excerpt text'
+      };
+
+      // Act
+      const content = formatStatusFileContent(null, task);
+
+      // Assert
+      expect(content).not.toContain('# Relevant Rule Excerpt');
+    });
+
+    it('should correctly indent multi-line rule excerpts', () => {
+      // Arrange
+      const task: StatusFileTaskData = {
+        title: 'Task with Multi-line Rule', 
+        description: '[multi_line_rule.mdc](mdc:./.cursor/rules/multi_line_rule.mdc)', 
+        status: 'done', 
+        approved: true, 
+        completedDetails: "Done",
+        relevantRuleFilename: 'multi_line_rule.mdc',
+        relevantRuleExcerpt: 'First rule line.\nSecond rule line.\n  Indented third rule line.'
+      };
+      const expectedExcerptIndented = task.relevantRuleExcerpt 
+        ? `   ${task.relevantRuleExcerpt.replace(/\n/g, `${EOL}   `)}`
+        : '';
+
+      // Act
+      const content = formatStatusFileContent(null, task);
+
+      // Assert
+      // Make assertion more specific: check for header AND indented content together
+      const expectedSection = `# Relevant Rule Excerpt (${task.relevantRuleFilename})${EOL}${EOL}${expectedExcerptIndented}`;
+      expect(content).toContain(expectedSection);
+    });
+  });
 }); 

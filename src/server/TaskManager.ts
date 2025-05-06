@@ -19,8 +19,8 @@ import {
 import { AppError, AppErrorCode } from "../types/errors.js";
 import { FileSystemService } from "./FileSystemService.js";
 import { generateObject, jsonSchema } from "ai";
-import { writeFile, mkdir } from 'node:fs/promises';
-import { formatStatusFileContent } from '../utils/statusFileFormatter.js';
+import { writeFile, mkdir, readFile } from 'node:fs/promises';
+import { formatStatusFileContent, StatusFileProjectData, StatusFileTaskData } from '../utils/statusFileFormatter.js';
 
 // Default path follows platform-specific conventions
 const DEFAULT_PATH = path.join(FileSystemService.getAppDataDir(), "tasks.json");
@@ -673,9 +673,9 @@ export class TaskManager {
       return; // Feature is inactive if env var is not set
     }
 
-    // Find the project and task data fresh from the in-memory store
     let projectData: Project | null = null;
     let taskData: Task | null = null;
+    let taskDataForFormatter: StatusFileTaskData | null = null;
 
     if (projectId) {
         projectData = this.data.projects.find(p => p.projectId === projectId) ?? null;
@@ -684,11 +684,52 @@ export class TaskManager {
         }
     }
     
+    let relevantRuleFilename: string | undefined = undefined;
+    let relevantRuleExcerpt: string | undefined = undefined;
+
+    // If we have task data, try to find and read the rule excerpt
+    if (taskData?.description) {
+        const ruleLinkRegex = /\[.*?\]\(mdc:(?:\.?\/)?(\.cursor[\/\\]rules[\/\\][^)]+\.mdc)\)/i;
+        const match = taskData.description.match(ruleLinkRegex);
+
+        if (match && match[1]) {
+            const relativeRulePath = match[1].replace(/[\/\\]/g, path.sep);
+            relevantRuleFilename = path.basename(relativeRulePath);
+            const absoluteRulePath = path.resolve(currentProjectPath, relativeRulePath);
+            
+            try {
+                relevantRuleExcerpt = await readFile(absoluteRulePath, 'utf-8');
+            } catch (err: any) {
+                console.warn(`[TaskManager] Failed to read rule file ${absoluteRulePath}: ${err.message}`);
+                relevantRuleExcerpt = undefined;
+                relevantRuleFilename = undefined;
+            }
+        }
+    }
+
+    const projectDataForFormatter: StatusFileProjectData | null = projectData ? {
+        initialPrompt: projectData.initialPrompt,
+        projectPlan: projectData.projectPlan,
+        completedTasks: projectData.tasks.filter(t => t.status === 'done' && t.approved).length,
+        totalTasks: projectData.tasks.length,
+    } : null;
+
+    if (taskData) {
+      taskDataForFormatter = {
+        title: taskData.title,
+        description: taskData.description,
+        status: taskData.status as "not started" | "in progress" | "done",
+        approved: taskData.approved,
+        completedDetails: taskData.completedDetails || "",
+        relevantRuleFilename: relevantRuleFilename,
+        relevantRuleExcerpt: relevantRuleExcerpt,
+      };
+    }
+    
     const statusFilePath = path.join(currentProjectPath, '.cursor', 'rules', 'current_status.mdc');
     const rulesDir = path.dirname(statusFilePath);
 
-    // Generate content using the new utility function
-    const content = formatStatusFileContent(projectData, taskData);
+    const content = formatStatusFileContent(projectDataForFormatter, taskDataForFormatter);
 
     try {
       await mkdir(rulesDir, { recursive: true });

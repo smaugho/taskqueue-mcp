@@ -16,6 +16,8 @@ export interface StatusFileTaskData {
   status: "not started" | "in progress" | "done";
   approved?: boolean;
   completedDetails: string;
+  relevantRuleFilename?: string;
+  relevantRuleExcerpt?: string;
 }
 
 // Helper function for consistent multi-line indentation
@@ -33,18 +35,21 @@ export function formatStatusFileContent(
   let projectSection = "None";
   if (project && typeof project.initialPrompt === 'string') {
     let projectDetails = `Project Name: ${project.initialPrompt}`;
-    if (typeof project.projectPlan === 'string' && project.projectPlan.trim() !== '') {
-      projectDetails += `${os.EOL}Project Detail:${os.EOL}${indentMultiLine(project.projectPlan)}`;
-    }
-    
     const completed = project.completedTasks ?? 0;
     const total = project.totalTasks ?? 0;
     const statusText = project.isFinalized ? `Finalized (${completed}/${total} tasks completed)` : `In Progress (${completed}/${total} tasks completed)`;
     projectDetails += `${os.EOL}Status: ${statusText}`;
+
+    if (typeof project.projectPlan === 'string' && project.projectPlan.trim() !== '') {
+      projectDetails += `${os.EOL}Project Detail:${os.EOL}${indentMultiLine(project.projectPlan)}`;
+    }
+    
     projectSection = projectDetails;
   }
   
   let taskSection = "None";
+  let ruleExcerptSection = ""; // Initialize rule excerpt section
+
   if (task && typeof task.title === 'string') {
     let taskDetails = `Title: ${task.title}`;
     
@@ -59,8 +64,16 @@ export function formatStatusFileContent(
       taskDetails += `${os.EOL}Completed Details:${os.EOL}${indentMultiLine(task.completedDetails)}`;
     }
     taskSection = taskDetails;
+
+    // Create rule excerpt section string (starts with EOLs) if data is present
+    if (task.relevantRuleFilename && task.relevantRuleExcerpt && task.relevantRuleExcerpt.trim() !== '') {
+      const header = `# Relevant Rule Excerpt (${task.relevantRuleFilename})`;
+      const indentedExcerpt = indentMultiLine(task.relevantRuleExcerpt);
+      ruleExcerptSection = `${os.EOL}${os.EOL}${header}${os.EOL}${os.EOL}${indentedExcerpt}`;
+    }
   }
   
+  // Construct the parts array
   const parts = [
     `---`,
     `description: Status of the current task`,
@@ -76,5 +89,12 @@ export function formatStatusFileContent(
     ``,
     taskSection
   ];
+
+  // Conditionally add the rule excerpt section string if it was created
+  if (ruleExcerptSection) {
+    parts.push(ruleExcerptSection);
+  }
+  
+  // Join all parts
   return parts.join(os.EOL);
 } 
