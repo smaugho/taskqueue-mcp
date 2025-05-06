@@ -6,11 +6,15 @@ alwaysApply: false
 
 ```mermaid
 flowchart TD
-    A(Plan Review #1) --> C[Component Batch #1 R/G/R];
-    C -- Changes Verified --> C_CommitConfirm{Confirm & Commit Batch #1};
+    A(Plan Review #1) --> C_Red[Component Batch #1 Red];
+    C_Red --> C_Green[Component Batch #1 Green];
+    C_Green --> C_Refactor[Component Batch #1 Refactor];
+    C_Refactor -- Changes Verified --> C_CommitConfirm{Confirm & Commit Batch #1};
     C_CommitConfirm --> D(Plan Review #2);
-    D -- Creates Tasks --> E[Component Batch #2 R/G/R];
-    E -- Changes Verified --> E_CommitConfirm{Confirm & Commit Batch #2};
+    D -- Creates Tasks --> E_Red[Component Batch #2 Red];
+    E_Red --> E_Green[Component Batch #2 Green];
+    E_Green --> E_Refactor[Component Batch #2 Refactor];
+    E_Refactor -- Changes Verified --> E_CommitConfirm{Confirm & Commit Batch #2};
     E_CommitConfirm --> F(...);
     F --> G(Plan Review #n);
     G -- Creates Task --> H[✅ Review Documentation];
@@ -21,11 +25,12 @@ flowchart TD
     style G fill:#f9f,stroke:#333,stroke-width:2px
 ```
 
-- **Task **`Plan Review #1`**: Analyse the bug/modification, identify affected layers, propose `Component Batch #1 (Red/Green/Refactor)` + `Plan Review #2` **ONLY after perform the reference Gathering for New Tasks**; present analysis & await confirmation; upon confirmation, add tasks and record.
-- **Task **`Component Batch #n – Red/Green/Refactor`**:
-    - **Red:** failing unit/integration test reproducing bug or specifying modified behaviour.
-    - **Green:** minimal fix + validation.
-    - **Refactor:** behaviour‑preserving improvements, removal of obsolete code/tests.
-    - After validation, propose commit (include `.tasks.json`), await confirmation, commit, record hash.
-- **Task **`Plan Review #n (n>1)`**: Run tests, decide whether goal met; propose next steps or `Review Documentation`; present analysis & await confirmation; after confirmation, add tasks & record.
-- **Task **`Review Documentation`**: Update docs/rules accordingly; propose commit, await confirmation, commit, record hash.
+- **Task `Plan Review #1`**: Analyse the bug/modification, identify affected layers, propose `Component Batch #1 – Red`, `Component Batch #1 – Green`, `Component Batch #1 – Refactor` + `Plan Review #2` **ONLY after perform the reference Gathering for New Tasks**; present analysis & await confirmation; upon confirmation, add tasks and record.
+- **Task `Component Batch #n – Red`**: Write a failing unit/integration test that reproduces the bug or specifies the modified behaviour. Validate the expected failure.
+- **Task `Component Batch #n – Green`**: Write the minimal production code to make the failing test from the "Red" phase pass. Focus solely on making the test pass; do not add extra features or refactor at this stage. Validate that all relevant tests now pass.
+- **Task `Component Batch #n – Refactor`**: Improve the internal structure of the code written in the "Green" phase (and potentially related existing code) without changing its external behaviour. This includes removing duplication, improving clarity, and adhering to coding standards. Ensure all tests still pass. After validation, propose commit (include `.tasks.json`), await confirmation, commit, record hash.
+- **Task `Plan Review #n (n>1)`**: Run tests, decide whether the goal has been met. 
+    - If not met or further iterations are needed: propose the next `Component Batch #n+1 – Red`, `Component Batch #n+1 – Green`, `Component Batch #n+1 – Refactor` tasks.
+    - If the goal is met: propose a `Review Documentation` task.
+    - Present analysis & await confirmation; after confirmation, add tasks & record.
+- **Task `Review Documentation`**: Update docs/rules accordingly; propose commit, await confirmation, commit, record hash.

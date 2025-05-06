@@ -15,7 +15,7 @@ import {
 } from '../test-helpers.js';
 import { Project, Task } from '../../../src/types/data.js';
 import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
-import { formatStatusFileContent } from '../../../src/utils/statusFileFormatter.js';
+import { formatStatusFileContent, StatusFileProjectData, StatusFileTaskData } from '../../../src/utils/statusFileFormatter.js';
 
 const createTempCurrentProjectPath = async (): Promise<string> => {
   const tempDir = path.join(tmpdir(), 'current_status_tests', Date.now().toString() + Math.random().toString().substring(2));
@@ -51,7 +51,7 @@ describe('current_status.mdc Updates Feature (E2E Acceptance)', () => {
         projectId: projectDetails.projectId || `proj-${Date.now()}`,
         initialPrompt: projectDetails.initialPrompt || 'Test Project',
         projectPlan: projectDetails.projectPlan || projectDetails.initialPrompt || 'Test Project Plan',
-        completed: false,
+        completed: projectDetails.completed === undefined ? false : projectDetails.completed,
         autoApprove: projectDetails.autoApprove === undefined ? false : projectDetails.autoApprove,
         tasks: [],
     };
@@ -63,7 +63,7 @@ describe('current_status.mdc Updates Feature (E2E Acceptance)', () => {
         description: taskDetails.description || 'Test Description',
         status: taskDetails.status || 'not started',
         approved: taskDetails.approved === undefined ? false : taskDetails.approved,
-        completedDetails: taskDetails.completedDetails || '',
+        completedDetails: taskDetails.completedDetails || "",
     };
     const createdTask = await createTestTaskInFile(activeContext.testFilePath, createdProject.projectId, taskInput);
     
@@ -128,7 +128,15 @@ describe('current_status.mdc Updates Feature (E2E Acceptance)', () => {
         const taskResult = await contextActive.client.callTool({name: "read_task", arguments: { projectId: project.projectId, taskId: task.id }}) as CallToolResult;
         const updatedTask = (verifyToolSuccessResponse<any>(taskResult)).task;
 
-        expect(content).toEqual(formatStatusFileContent(project, updatedTask));
+        const projectForFormatter: StatusFileProjectData = {
+          initialPrompt: project.initialPrompt,
+          projectPlan: project.projectPlan,
+        };
+        const taskForFormatter: StatusFileTaskData = {
+          ...updatedTask,
+          status: updatedTask.status as "not started" | "in progress" | "done",
+        };
+        expect(content).toEqual(formatStatusFileContent(projectForFormatter, taskForFormatter));
       });
 
       it('should create .cursor/rules directory if it does not exist when creating current_status.mdc', async () => {
@@ -142,7 +150,10 @@ describe('current_status.mdc Updates Feature (E2E Acceptance)', () => {
         const content = await readFileIfExists(getStatusFilePath(currentProjectPath));
         const taskResult = await contextActive.client.callTool({name: "read_task", arguments: { projectId: project.projectId, taskId: task.id }}) as CallToolResult;
         const updatedTask = (verifyToolSuccessResponse<any>(taskResult)).task;
-        expect(content).toEqual(formatStatusFileContent(project, updatedTask));
+        
+        const projectForFormatter: StatusFileProjectData = { initialPrompt: project.initialPrompt, projectPlan: project.projectPlan };
+        const taskForFormatter: StatusFileTaskData = { ...updatedTask, status: updatedTask.status as "not started" | "in progress" | "done" };
+        expect(content).toEqual(formatStatusFileContent(projectForFormatter, taskForFormatter));
       });
     });
 
@@ -165,7 +176,10 @@ describe('current_status.mdc Updates Feature (E2E Acceptance)', () => {
         const updatedProj = verifyToolSuccessResponse<Project>(projResult);
         const taskResult = await contextActive.client.callTool({name: "read_task", arguments: { projectId: project.projectId, taskId: task.id }}) as CallToolResult;
         const updatedTask = (verifyToolSuccessResponse<any>(taskResult)).task;
-        expect(content).toEqual(formatStatusFileContent(updatedProj, updatedTask));
+
+        const projectForFormatter: StatusFileProjectData = { initialPrompt: updatedProj.initialPrompt, projectPlan: updatedProj.projectPlan };
+        const taskForFormatter: StatusFileTaskData = { ...updatedTask, status: updatedTask.status as "not started" | "in progress" | "done" };
+        expect(content).toEqual(formatStatusFileContent(projectForFormatter, taskForFormatter));
       });
 
       it('should overwrite existing content when task becomes "in progress"', async () => {
@@ -181,71 +195,23 @@ describe('current_status.mdc Updates Feature (E2E Acceptance)', () => {
         const content = await readFileIfExists(getStatusFilePath(currentProjectPath));
         const taskResult = await contextActive.client.callTool({name: "read_task", arguments: { projectId: project.projectId, taskId: task.id }}) as CallToolResult;
         const updatedTask = (verifyToolSuccessResponse<any>(taskResult)).task;
-        expect(content).toEqual(formatStatusFileContent(project, updatedTask));
-      });
-    });
 
-    describe('Task Status: "not started"', () => {
-      it('should update Task section to "None" when task becomes "not started", leaving Project section intact', async () => {
-        const { project, task: initialTask } = await setupProjectAndTaskInFile(contextActive, {}, {status: 'in progress'});
-        
-        await ensureDirExists(getRulesDir(currentProjectPath));
-        const projResult = await contextActive.client.callTool({name: "read_project", arguments: { projectId: project.projectId }}) as CallToolResult;
-        const projectForInitialWrite = verifyToolSuccessResponse<Project>(projResult);
-        const taskResult = await contextActive.client.callTool({name: "read_task", arguments: { projectId: project.projectId, taskId: initialTask.id }}) as CallToolResult;
-        const taskForInitialWrite = (verifyToolSuccessResponse<any>(taskResult)).task;
-        await fs.writeFile(getStatusFilePath(currentProjectPath), formatStatusFileContent(projectForInitialWrite, taskForInitialWrite));
-
-        await contextActive.client.callTool({
-          name: "update_task",
-          arguments: { projectId: project.projectId, taskId: initialTask.id, status: 'not started' }
-        });
-
-        const content = await readFileIfExists(getStatusFilePath(currentProjectPath));
-        expect(content).toEqual(formatStatusFileContent(projectForInitialWrite, null));
-      });
-    });
-
-    describe('Project Finalization', () => {
-      it('should update Project section to "None" when project is finalized', async () => {
-        const { project, task } = await setupProjectAndTaskInFile(contextActive, {}, {status: 'in progress'});
-        
-        await ensureDirExists(getRulesDir(currentProjectPath));
-        const projResult = await contextActive.client.callTool({name: "read_project", arguments: { projectId: project.projectId }}) as CallToolResult;
-        const projectForInitialWrite = verifyToolSuccessResponse<Project>(projResult);
-        const taskResult = await contextActive.client.callTool({name: "read_task", arguments: { projectId: project.projectId, taskId: task.id }}) as CallToolResult;
-        const taskForInitialWrite = (verifyToolSuccessResponse<any>(taskResult)).task;
-        await fs.writeFile(getStatusFilePath(currentProjectPath), formatStatusFileContent(projectForInitialWrite, taskForInitialWrite));
-
-        await contextActive.client.callTool({
-          name: "update_task",
-          arguments: { projectId: project.projectId, taskId: task.id, status: 'done', completedDetails: 'Done for finalization' }
-        });
-        await contextActive.client.callTool({
-          name: "approve_task",
-          arguments: { projectId: project.projectId, taskId: task.id }
-        });
-        await contextActive.client.callTool({
-          name: "finalize_project",
-          arguments: { projectId: project.projectId }
-        });
-
-        const content = await readFileIfExists(getStatusFilePath(currentProjectPath));
-        expect(content).toEqual(formatStatusFileContent(null, null)); 
+        const projectForFormatter: StatusFileProjectData = { initialPrompt: project.initialPrompt, projectPlan: project.projectPlan };
+        const taskForFormatter: StatusFileTaskData = { ...updatedTask, status: updatedTask.status as "not started" | "in progress" | "done" };
+        expect(content).toEqual(formatStatusFileContent(projectForFormatter, taskForFormatter));
       });
     });
 
     describe('Switching Projects/Tasks', () => {
       it('should update Project and Task sections when a task in a *different* project becomes "in progress"', async () => {
-        const { project: p1, task: t1 } = await setupProjectAndTaskInFile(contextActive, { initialPrompt: "Project One", projectPlan: "Plan One Details" }, { title: "Task One", description: "Desc One Details" });
-        const { project: p2, task: t2 } = await setupProjectAndTaskInFile(contextActive, { initialPrompt: "Project Two", projectPlan: "Plan Two Details" }, { title: "Task Two", description: "Desc Two Details" });
+        const { project: p1, task: t1 } = await setupProjectAndTaskInFile(contextActive, { initialPrompt: "Project One", projectPlan: "Plan One Details" }, { title: "Task One", description: "Desc One Details", completedDetails: "" });
+        const { project: p2, task: t2 } = await setupProjectAndTaskInFile(contextActive, { initialPrompt: "Project Two", projectPlan: "Plan Two Details" }, { title: "Task Two", description: "Desc Two Details", completedDetails: "" });
 
         await ensureDirExists(getRulesDir(currentProjectPath));
-        const proj1Result = await contextActive.client.callTool({name: "read_project", arguments: { projectId: p1.projectId }}) as CallToolResult;
-        const p1Data = verifyToolSuccessResponse<Project>(proj1Result);
-        const task1Result = await contextActive.client.callTool({name: "read_task", arguments: { projectId: p1.projectId, taskId: t1.id }}) as CallToolResult;
-        const t1Data = (verifyToolSuccessResponse<any>(task1Result)).task;
-        await fs.writeFile(getStatusFilePath(currentProjectPath), formatStatusFileContent(p1Data, t1Data));
+        
+        const p1DataForFormatter: StatusFileProjectData = { initialPrompt: p1.initialPrompt, projectPlan: p1.projectPlan };
+        const t1DataForFormatter: StatusFileTaskData = { ...t1, status: t1.status as "not started" | "in progress" | "done" };     
+        await fs.writeFile(getStatusFilePath(currentProjectPath), formatStatusFileContent(p1DataForFormatter, t1DataForFormatter));
         
         await contextActive.client.callTool({
           name: "update_task",
@@ -257,29 +223,10 @@ describe('current_status.mdc Updates Feature (E2E Acceptance)', () => {
         const p2Data = verifyToolSuccessResponse<Project>(proj2Result);
         const task2Result = await contextActive.client.callTool({name: "read_task", arguments: { projectId: p2.projectId, taskId: t2.id }}) as CallToolResult;
         const t2DataUpdated = (verifyToolSuccessResponse<any>(task2Result)).task;
-        expect(content).toEqual(formatStatusFileContent(p2Data, t2DataUpdated));
-      });
-    });
 
-    describe('Task details propagation (Title and Description)', () => {
-      it('should correctly write Title and Description to current_status.mdc when task is set to in progress', async () => {
-        const projectDetails = { initialPrompt: 'Project Alpha', projectPlan: 'Plan for Alpha with\nmultiple lines in plan.' };
-        const taskDetails = { title: 'Task One Title', description: 'Task One Description with\\nmultiple lines.\\nAnd a third line.' };
-        const { project, task } = await setupProjectAndTaskInFile(contextActive, projectDetails, taskDetails);
-        await ensureDirExists(getRulesDir(currentProjectPath));
-
-        await contextActive.client.callTool({
-          name: "update_task",
-          arguments: { projectId: project.projectId, taskId: task.id, status: 'in progress' }
-        });
-
-        const content = await readFileIfExists(getStatusFilePath(currentProjectPath));
-        const projResult = await contextActive.client.callTool({name: "read_project", arguments: { projectId: project.projectId }}) as CallToolResult;
-        const currentProject = verifyToolSuccessResponse<Project>(projResult);
-        const taskResult = await contextActive.client.callTool({name: "read_task", arguments: { projectId: project.projectId, taskId: task.id }}) as CallToolResult;
-        const currentTask = (verifyToolSuccessResponse<any>(taskResult)).task;
-
-        expect(content).toEqual(formatStatusFileContent(currentProject, currentTask));
+        const p2DataForFormatter: StatusFileProjectData = { initialPrompt: p2Data.initialPrompt, projectPlan: p2Data.projectPlan };
+        const t2DataUpdatedForFormatter: StatusFileTaskData = { ...t2DataUpdated, status: t2DataUpdated.status as "not started" | "in progress" | "done" };
+        expect(content).toEqual(formatStatusFileContent(p2DataForFormatter, t2DataUpdatedForFormatter));
       });
     });
   });

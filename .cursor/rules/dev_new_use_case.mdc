@@ -7,11 +7,15 @@ alwaysApply: false
 ```mermaid
 flowchart TD
     A[Acceptance Test E2E - Red] --> B(Plan Review #1);
-    B -- Creates Tasks --> C[Component Batch #1 R/G/R];
-    C -- Changes Verified --> C_CommitConfirm{Confirm & Commit Batch #1};
+    B -- Creates Tasks --> C_Red[Component Batch #1 Red];
+    C_Red --> C_Green[Component Batch #1 Green];
+    C_Green --> C_Refactor[Component Batch #1 Refactor];
+    C_Refactor -- Changes Verified --> C_CommitConfirm{Confirm & Commit Batch #1};
     C_CommitConfirm --> D(Plan Review #2);
-    D -- Creates Tasks --> E[Component Batch #2 R/G/R];
-    E -- Changes Verified --> E_CommitConfirm{Confirm & Commit Batch #2};
+    D -- Creates Tasks --> E_Red[Component Batch #2 Red];
+    E_Red --> E_Green[Component Batch #2 Green];
+    E_Green --> E_Refactor[Component Batch #2 Refactor];
+    E_Refactor -- Changes Verified --> E_CommitConfirm{Confirm & Commit Batch #2};
     E_CommitConfirm --> F(...);
     F --> G(Plan Review #n);
     G -- Creates Task --> H[✅ Review Documentation];
@@ -22,15 +26,13 @@ flowchart TD
     style G fill:#f9f,stroke:#333,stroke-width:2px
 ```
 
-- **Task **`Acceptance Test (E2E) – Red`**: Write the high‑level failing E2E test(s) defining the desired user‑facing behaviour. **Tests MUST follow **`testing_strategy.mdc`** (behavioural focus, AAA structure, resilience).** Validate the expected failure and document it.
-- **Task **`Plan Review #n`**:
+- **Task `Acceptance Test (E2E) – Red`**: Write the high‑level failing E2E test(s) defining the desired user‑facing behaviour. **Tests MUST follow `testing_strategy.mdc` (behavioural focus, AAA structure, resilience).** Validate the expected failure and document it.
+- **Task `Plan Review #n`**:
     - **Run the primary Acceptance Test(s).**
-    - If they pass → Decide whether more work is needed **ONLY after perform the reference Gathering for New Tasks**. If not, propose a `Review Documentation` task; else propose the next `Component Batch` and `Plan Review`.
-    - If they fail → Analyse failures and propose the required `Component Batch #n+1 (Red/Green/Refactor)` plus next `Plan Review`.
+    - If they pass → Decide whether more work is needed **ONLY after perform the reference Gathering for New Tasks**. If not, propose a `Review Documentation` task; else propose the next `Component Batch – Red`, `Component Batch – Green`, `Component Batch – Refactor` and `Plan Review`.
+    - If they fail → Analyse failures and propose the required `Component Batch #n+1 – Red`, `Component Batch #n+1 – Green`, `Component Batch #n+1 – Refactor` plus next `Plan Review`.
     - **Present the analysis and proposed plan to the human developer and await explicit confirmation.** After confirmation, add tasks with `mcp_taskqueue_add_tasks_to_project` and record details in `completedDetails`.
-- **Task **`Component Batch #n – Red/Green/Refactor`**: Classic TDD cycle strictly following `testing_strategy.mdc` (including lint checks 0 errors).
-    - **Red:** failing unit/integration test (state‑verification focus).
-    - **Green:** minimal production code to pass tests.
-    - **Refactor:** internal improvements, propose further test improvements for next Plan Review.
-    - After validation, **propose commit (include **`.tasks.json`) → await confirmation → commit → record hash.**
-- **Task **`Review Documentation`**: Update docs/rules, propose commit, await confirmation, commit, record hash.
+- **Task `Component Batch #n – Red`**: Write a failing unit/integration test (state‑verification focus) that specifies the new behaviour or a component of it, ensuring it aligns with the overall acceptance criteria. Tests must follow `testing_strategy.mdc` (including lint checks 0 errors). Validate the expected failure.
+- **Task `Component Batch #n – Green`**: Write the minimal production code to make the failing test from the "Red" phase pass. Focus solely on making the test pass; do not add extra features or refactor at this stage. Validate that all relevant tests now pass.
+- **Task `Component Batch #n – Refactor`**: Improve the internal structure of the code written in the "Green" phase (and potentially related existing code) without changing its external behaviour. This includes removing duplication, improving clarity, and adhering to coding standards. Ensure all tests still pass. Propose further test improvements for the next Plan Review. After validation, **propose commit (include `.tasks.json`) → await confirmation → commit → record hash.**
+- **Task `Review Documentation`**: Update docs/rules, propose commit, await confirmation, commit, record hash.

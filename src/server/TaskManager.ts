@@ -328,7 +328,7 @@ export class TaskManager {
         id: task.id,
         title: task.title,
         description: task.description,
-        completedDetails: task.completedDetails,
+        completedDetails: task.completedDetails ?? "",
         approved: task.approved,
       },
     };
