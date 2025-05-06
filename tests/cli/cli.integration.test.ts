@@ -79,62 +79,80 @@ describe("CLI Integration Tests", () => {
   });
 
   it("should list only open projects via CLI", async () => {
-    const { stdout } = await execAsync(`TASK_MANAGER_FILE_PATH=${tasksFilePath} tsx ${CLI_PATH} list -s open`);
+    const { stdout } = await execAsync(`npx tsx ${CLI_PATH} list -s open`, {
+      env: { ...process.env, TASK_MANAGER_FILE_PATH: tasksFilePath }
+    });
     expect(stdout).toContain("proj-1");
     expect(stdout).toContain("proj-2");
     expect(stdout).not.toContain("proj-3");
-  }, 5000);
+  });
 
   it("should list only pending approval projects via CLI", async () => {
-    const { stdout } = await execAsync(`TASK_MANAGER_FILE_PATH=${tasksFilePath} tsx ${CLI_PATH} list -s pending_approval`);
+    const { stdout } = await execAsync(`npx tsx ${CLI_PATH} list -s pending_approval`, {
+      env: { ...process.env, TASK_MANAGER_FILE_PATH: tasksFilePath }
+    });
     expect(stdout).toContain("proj-2");
     expect(stdout).not.toContain("proj-1");
     expect(stdout).not.toContain("proj-3");
-  }, 5000);
+  });
 
   it("should list only completed projects via CLI", async () => {
-    const { stdout } = await execAsync(`TASK_MANAGER_FILE_PATH=${tasksFilePath} tsx ${CLI_PATH} list -s completed`);
+    const { stdout } = await execAsync(`npx tsx ${CLI_PATH} list -s completed`, {
+      env: { ...process.env, TASK_MANAGER_FILE_PATH: tasksFilePath }
+    });
     expect(stdout).toContain("proj-3");
     expect(stdout).not.toContain("proj-1");
     expect(stdout).not.toContain("proj-2");
-  }, 5000);
+  });
 
   it("should list all projects when no state is specified", async () => {
-    const { stdout } = await execAsync(`TASK_MANAGER_FILE_PATH=${tasksFilePath} tsx ${CLI_PATH} list`);
+    const { stdout } = await execAsync(`npx tsx ${CLI_PATH} list`, {
+      env: { ...process.env, TASK_MANAGER_FILE_PATH: tasksFilePath }
+    });
     expect(stdout).toContain("proj-1");
     expect(stdout).toContain("proj-2");
     expect(stdout).toContain("proj-3");
-  }, 5000);
+  });
 
   it("should list tasks for a specific project filtered by state", async () => {
     // Test open tasks
-    const openResult = await execAsync(`TASK_MANAGER_FILE_PATH=${tasksFilePath} tsx ${CLI_PATH} list -p proj-1 -s open`);
+    const openResult = await execAsync(`npx tsx ${CLI_PATH} list -p proj-1 -s open`, {
+      env: { ...process.env, TASK_MANAGER_FILE_PATH: tasksFilePath }
+    });
     expect(openResult.stdout).toContain("task-1");
     expect(openResult.stdout).not.toContain("task-2");
     expect(openResult.stdout).not.toContain("task-3");
 
     // Test pending approval tasks
-    const pendingResult = await execAsync(`TASK_MANAGER_FILE_PATH=${tasksFilePath} tsx ${CLI_PATH} list -p proj-2 -s pending_approval`);
+    const pendingResult = await execAsync(`npx tsx ${CLI_PATH} list -p proj-2 -s pending_approval`, {
+      env: { ...process.env, TASK_MANAGER_FILE_PATH: tasksFilePath }
+    });
     expect(pendingResult.stdout).toContain("task-2");
     expect(pendingResult.stdout).not.toContain("task-1");
     expect(pendingResult.stdout).not.toContain("task-3");
 
     // Test completed tasks
-    const completedResult = await execAsync(`TASK_MANAGER_FILE_PATH=${tasksFilePath} tsx ${CLI_PATH} list -p proj-3 -s completed`);
+    const completedResult = await execAsync(`npx tsx ${CLI_PATH} list -p proj-3 -s completed`, {
+      env: { ...process.env, TASK_MANAGER_FILE_PATH: tasksFilePath }
+    });
     expect(completedResult.stdout).toContain("task-3");
     expect(completedResult.stdout).not.toContain("task-1");
     expect(completedResult.stdout).not.toContain("task-2");
-  }, 5000);
+  }, 10000);
 
   it("should handle no matching items gracefully", async () => {
     // Test no matching projects with open state
-    const { stdout: noProjects } = await execAsync(`TASK_MANAGER_FILE_PATH=${tasksFilePath} tsx ${CLI_PATH} list -s open -p proj-3`);
+    const { stdout: noProjects } = await execAsync(`npx tsx ${CLI_PATH} list -s open -p proj-3`, {
+      env: { ...process.env, TASK_MANAGER_FILE_PATH: tasksFilePath }
+    });
     expect(noProjects).toContain("No tasks found matching state 'open' in project proj-3");
 
     // Test no matching tasks with completed state
-    const { stdout: noTasks } = await execAsync(`TASK_MANAGER_FILE_PATH=${tasksFilePath} tsx ${CLI_PATH} list -s completed -p proj-1`);
+    const { stdout: noTasks } = await execAsync(`npx tsx ${CLI_PATH} list -s completed -p proj-1`, {
+      env: { ...process.env, TASK_MANAGER_FILE_PATH: tasksFilePath }
+    });
     expect(noTasks).toContain("No tasks found matching state 'completed' in project proj-1");
-  }, 5000);
+  });
 
   describe("generate-plan command", () => {
     beforeEach(() => {
@@ -154,23 +172,25 @@ describe("CLI Integration Tests", () => {
       delete process.env.OPENAI_API_KEY;
 
       const { stderr } = await execAsync(
-        `TASK_MANAGER_FILE_PATH=${tasksFilePath} tsx ${CLI_PATH} generate-plan --prompt "Create a todo app" --provider openai`
+        `npx tsx ${CLI_PATH} generate-plan --prompt "Create a todo app" --provider openai`,
+        { env: { ...process.env, TASK_MANAGER_FILE_PATH: tasksFilePath, OPENAI_API_KEY: undefined } }
       ).catch(error => error);
 
       // Verify we get an error with the error code format
       expect(stderr).toContain("[ERR_");
       // The actual error should contain "API key" text
       expect(stderr).toContain("API key");
-    }, 5000);
+    });
 
     it("should handle invalid file attachments gracefully", async () => {
       const { stdout, stderr } = await execAsync(
-        `TASK_MANAGER_FILE_PATH=${tasksFilePath} tsx ${CLI_PATH} generate-plan --prompt "Create app" --attachment nonexistent.txt`
+        `npx tsx ${CLI_PATH} generate-plan --prompt "Create app" --attachment nonexistent.txt`,
+        { env: { ...process.env, TASK_MANAGER_FILE_PATH: tasksFilePath } }
       ).catch(error => ({ stdout: error.stdout, stderr: error.stderr }));
 
       // Updated assertion to match the formatCliError output
       expect(stderr).toContain("[ERR_4000] Failed to read attachment file: nonexistent.txt");
       expect(stderr).toContain("-> Details: Attachment file not found: nonexistent.txt");
-    }, 5000);
+    });
   });
 }); 

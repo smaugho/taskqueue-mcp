@@ -18,8 +18,7 @@
 		"build": "tsc",
 		"start": "node dist/src/server/index.js",
 		"dev": "tsc && node dist/src/server/index.js",
-		"test": "tsc && NODE_OPTIONS=--experimental-vm-modules jest",
-		"test:mcp": "tsc && jest",
+		"test": "tsc && cross-env NODE_OPTIONS=--experimental-vm-modules jest",
 		"cli": "node dist/src/cli.js"
 	},
 	"repository": {
@@ -59,6 +58,7 @@
 		"@types/json-schema": "^7.0.15",
 		"@types/node": "^22.13.14",
 		"babel-jest": "^29.7.0",
+		"cross-env": "^7.0.3",
 		"dotenv": "^16.4.7",
 		"jest": "^29.7.0",
 		"shx": "^0.4.0",

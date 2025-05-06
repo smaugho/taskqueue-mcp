@@ -514,8 +514,8 @@ export async function executeToolAndHandleErrors(
       }
     }
 
-    // 4b. Handle all other errors as tool execution failures
-    console.error(`Tool Execution Error [${toolName}]:`, error);
+    // 4b. Handle all other errors as tool execution failures (TODO: Commented to avoid logs in tests)
+   // console.error(`Tool Execution Error [${toolName}]:`, error);
 
     // Get error message, handling both Error objects and unknown error types
     const errorMessage = error instanceof Error 
