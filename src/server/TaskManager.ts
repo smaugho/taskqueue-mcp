@@ -527,34 +527,71 @@ export class TaskManager {
     await this.ensureInitialized();
     await this.reloadFromDisk();
 
-    const proj = this.data.projects.find((p) => p.projectId === projectId);
-    if (!proj) {
-      throw new AppError(`Project ${projectId} not found`, AppErrorCode.ProjectNotFound);
+    const projectIndex = this.data.projects.findIndex(
+      (p) => p.projectId === projectId
+    );
+    if (projectIndex === -1) {
+      throw new AppError(
+        `Project ${projectId} not found`,
+        AppErrorCode.ProjectNotFound
+      );
     }
 
-    if (proj.completed) {
-      throw new AppError('Project is already completed', AppErrorCode.ProjectAlreadyCompleted);
+    const taskIndex = this.data.projects[projectIndex].tasks.findIndex(
+      (t) => t.id === taskId
+    );
+    if (taskIndex === -1) {
+      throw new AppError(
+        `Task ${taskId} not found in project ${projectId}`,
+        AppErrorCode.TaskNotFound
+      );
     }
 
-    const task = proj.tasks.find((t) => t.id === taskId);
-    if (!task) {
-      throw new AppError(`Task ${taskId} not found`, AppErrorCode.TaskNotFound);
+    const existingTask = this.data.projects[projectIndex].tasks[taskIndex];
+    if (existingTask.approved) {
+      throw new AppError(
+        "Cannot modify an approved task",
+        AppErrorCode.TaskAlreadyApproved
+      );
     }
 
-    if (task.approved) {
-      throw new AppError('Cannot modify an approved task', AppErrorCode.CannotModifyApprovedTask);
+    const originalStatus = existingTask.status;
+
+    if (updates.status) {
+      const newStatus = updates.status;
+      if (
+        (originalStatus === "not started" && newStatus === "done") ||
+        (originalStatus === "done" && newStatus === "not started")
+      ) {
+        throw new AppError(
+          `Invalid status transition from ${originalStatus} to ${newStatus}`,
+          AppErrorCode.InvalidArgument 
+        );
+      }
+    }
+    
+    if (updates.status === "done" && !updates.completedDetails && !existingTask.completedDetails) {
+      throw new AppError(
+        "Invalid or missing required parameter: completedDetails (required when status = 'done')",
+        AppErrorCode.MissingParameter, 
+        "completedDetails"
+      );
     }
 
-    // Apply updates
-    Object.assign(task, updates);
-
-    // Pass IDs instead of potentially stale objects
-    // Determine the correct taskId to pass based on the *final* status
-    const finalTaskIdForStatusFile = task.status === 'not started' ? null : taskId;
-    await this._updateCurrentStatusFile(projectId, finalTaskIdForStatusFile);
-
+    const updatedTask: Task = {
+      ...existingTask,
+      ...updates,
+      completedDetails: updates.status === "done" 
+        ? (updates.completedDetails || existingTask.completedDetails || "Completed") 
+        : (updates.status === "not started" || updates.status === "in progress" ? "" : existingTask.completedDetails)
+    };
+    
+    this.data.projects[projectIndex].tasks[taskIndex] = updatedTask;
     await this.saveTasks();
-    return task;
+    
+    await this._updateCurrentStatusFile(projectId, taskId, originalStatus, updatedTask.status);
+
+    return updatedTask;
   }
 
   public async deleteTask(projectId: string, taskId: string): Promise<DeleteTaskSuccessData> {
@@ -667,77 +704,117 @@ export class TaskManager {
    * Updates the current_status.mdc file based on the provided project and task IDs.
    * Only active if CURRENT_PROJECT_PATH environment variable is set.
    */
-  private async _updateCurrentStatusFile(projectId: string | null, taskId: string | null): Promise<void> {
+  private async _updateCurrentStatusFile(
+    targetProjectId: string | null, 
+    targetTaskId: string | null, 
+    originalTaskStatus?: Task['status'],
+    currentTaskFinalStatus?: Task['status'] 
+  ): Promise<void> {
     const currentProjectPath = process.env.CURRENT_PROJECT_PATH;
     if (!currentProjectPath) {
-      return; // Feature is inactive if env var is not set
+      return;
     }
 
-    let projectData: Project | null = null;
-    let taskData: Task | null = null;
-    let taskDataForFormatter: StatusFileTaskData | null = null;
+    const rulesDir = path.join(currentProjectPath, ".cursor", "rules");
+    const statusFilePath = path.join(rulesDir, "current_status.mdc");
 
-    if (projectId) {
-        projectData = this.data.projects.find(p => p.projectId === projectId) ?? null;
-        if (projectData && taskId) {
-            taskData = projectData.tasks.find(t => t.id === taskId) ?? null;
-        }
+    // If called with nulls (e.g. from finalizeProject, deleteTask), clear the file.
+    if (!targetProjectId || !targetTaskId) {
+      try {
+        await writeFile(statusFilePath, formatStatusFileContent(null, null));
+      } catch (error) {
+        console.error(`Failed to clear status file ${statusFilePath}:`, error);
+      }
+      return;
+    }
+
+    // Fetch the project from the current in-memory state (this.data)
+    const projectToShow = this.data.projects.find(p => p.projectId === targetProjectId);
+    if (!projectToShow) {
+        console.error(`Project ${targetProjectId} not found in _updateCurrentStatusFile. Cannot update status file.`);
+        return;
+    }
+
+    // Fetch the target task (the one that was just updated) from the project.
+    const currentUpdatedTask = projectToShow.tasks.find(t => t.id === targetTaskId);
+    if (!currentUpdatedTask) {
+        console.error(`Task ${targetTaskId} not found in project ${targetProjectId} within _updateCurrentStatusFile. Cannot update status file.`);
+        return;
+    }
+
+    // Use the status from the fetched currentUpdatedTask as the definitive current status.
+    // The passed currentTaskFinalStatus is used primarily for the 'not started' to 'not started' check.
+    const actualCurrentStatus = currentUpdatedTask.status;
+
+    // Requirement: Prevent status file update if a task description (or other non-status field)
+    // is updated but the task's status was 'not started' and remains 'not started'.
+    // We use currentTaskFinalStatus here because currentUpdatedTask.status from this.data would be 'not started',
+    // and originalTaskStatus would also be 'not started'. currentTaskFinalStatus reflects the intended
+    // status from the update operation itself.
+    if (originalTaskStatus === "not started" && currentTaskFinalStatus === "not started") {
+      return; 
+    }
+
+    let taskToDisplay = currentUpdatedTask;
+    
+    // Requirement: Conditional logic for 'done' tasks.
+    // If the current task (that triggered the update, or was just updated) is 'done',
+    // check if another task is 'in progress'. If so, display that 'in progress' task.
+    // Otherwise, display the current 'done' task.
+    if (actualCurrentStatus === "done") {
+      const otherInProgressTask = projectToShow.tasks.find(
+        (t) => t.id !== currentUpdatedTask.id && t.status === "in progress" && !t.approved
+      );
+      if (otherInProgressTask) {
+        taskToDisplay = otherInProgressTask;
+      } 
     }
     
-    let relevantRuleFilename: string | undefined = undefined;
-    let relevantRuleExcerpt: string | undefined = undefined;
-
-    // If we have task data, try to find and read the rule excerpt
-    if (taskData?.description) {
-        const ruleLinkRegex = /\[.*?\]\(mdc:(?:\.?\/)?(\.cursor[\/\\]rules[\/\\][^)]+\.mdc)\)/i;
-        const match = taskData.description.match(ruleLinkRegex);
-
-        if (match && match[1]) {
-            const relativeRulePath = match[1].replace(/[\/\\]/g, path.sep);
-            relevantRuleFilename = path.basename(relativeRulePath);
-            const absoluteRulePath = path.resolve(currentProjectPath, relativeRulePath);
-            
-            try {
-                relevantRuleExcerpt = await readFile(absoluteRulePath, 'utf-8');
-            } catch (err: any) {
-                console.warn(`[TaskManager] Failed to read rule file ${absoluteRulePath}: ${err.message}`);
-                relevantRuleExcerpt = undefined;
-                relevantRuleFilename = undefined;
-            }
-        }
+    if (!taskToDisplay) {
+        console.error(`No task determined to display for project ${targetProjectId}. Cannot update status file.`);
+        return;
     }
-
-    const projectDataForFormatter: StatusFileProjectData | null = projectData ? {
-        projectId: projectData.projectId,
-        initialPrompt: projectData.initialPrompt,
-        projectPlan: projectData.projectPlan,
-        completedTasks: projectData.tasks.filter(t => t.status === 'done' && t.approved).length,
-        totalTasks: projectData.tasks.length,
-    } : null;
-
-    if (taskData) {
-      taskDataForFormatter = {
-        taskId: taskData.id,
-        title: taskData.title,
-        description: taskData.description,
-        status: taskData.status as "not started" | "in progress" | "done",
-        approved: taskData.approved,
-        completedDetails: taskData.completedDetails || "",
-        relevantRuleFilename: relevantRuleFilename,
-        relevantRuleExcerpt: relevantRuleExcerpt,
-      };
-    }
-    
-    const statusFilePath = path.join(currentProjectPath, '.cursor', 'rules', 'current_status.mdc');
-    const rulesDir = path.dirname(statusFilePath);
-
-    const content = formatStatusFileContent(projectDataForFormatter, taskDataForFormatter);
 
     try {
       await mkdir(rulesDir, { recursive: true });
-      await writeFile(statusFilePath, content, 'utf-8');
+
+      const projectForFormatter: StatusFileProjectData = {
+        projectId: projectToShow.projectId,
+        initialPrompt: projectToShow.initialPrompt,
+        projectPlan: projectToShow.projectPlan,
+        completedTasks: projectToShow.tasks.filter(t => t.status === 'done').length,
+        totalTasks: projectToShow.tasks.length,
+      };
+      
+      let relevantRuleFilename: string | undefined = undefined;
+      let relevantRuleExcerpt: string | undefined = undefined;
+
+      const ruleLinkMatch = taskToDisplay.description?.match(/\[([^\]]+?\.mdc)\]\(mdc:(.*?)\)/);
+      if (ruleLinkMatch && ruleLinkMatch[1] && ruleLinkMatch[2]) {
+        relevantRuleFilename = ruleLinkMatch[1];
+        const ruleFilePath = path.join(rulesDir, relevantRuleFilename);
+        try {
+          relevantRuleExcerpt = await readFile(ruleFilePath, 'utf-8');
+        } catch (e) {
+          console.warn(`Could not read rule file ${ruleFilePath} referenced in task ${taskToDisplay.id}`);
+        }
+      }
+
+      const taskForFormatter: StatusFileTaskData = {
+        taskId: taskToDisplay.id,
+        title: taskToDisplay.title,
+        description: taskToDisplay.description,
+        status: taskToDisplay.status, 
+        approved: taskToDisplay.approved,
+        completedDetails: taskToDisplay.completedDetails,
+        relevantRuleFilename,
+        relevantRuleExcerpt,
+      };
+      
+      const statusFileContent = formatStatusFileContent(projectForFormatter, taskForFormatter);
+      await writeFile(statusFilePath, statusFileContent);
     } catch (error) {
-      console.error(`[TaskManager] Failed to update ${statusFilePath}:`, error);
+      console.error(`Failed to update status file ${statusFilePath}:`, error);
     }
   }
 } 

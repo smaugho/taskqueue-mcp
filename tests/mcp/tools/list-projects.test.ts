@@ -69,6 +69,19 @@ describe('list_projects Tool', () => {
 
       // Complete the second project's task
       const taskId = await getFirstTaskId(context.client, completedProjectId);
+      
+      // Add: Mark task as 'in progress' first
+      await context.client.callTool({
+        name: "update_task",
+        arguments: {
+          projectId: completedProjectId,
+          taskId,
+          status: "in progress",
+          completedDetails: ""
+        }
+      });
+      
+      // Then mark as 'done'
       await context.client.callTool({
         name: "update_task",
         arguments: {

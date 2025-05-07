@@ -96,6 +96,17 @@ describe('delete_project Tool', () => {
       const taskData = verifyToolSuccessResponse<{ task: { id: string } }>(nextTaskResult);
       const taskId = taskData.task.id;
 
+      // Add: Mark task as 'in progress'
+      await context.client.callTool({
+        name: "update_task",
+        arguments: {
+          projectId,
+          taskId,
+          status: "in progress",
+          completedDetails: "" 
+        }
+      });
+
       // Mark task as done
       await context.client.callTool({
         name: "update_task",
@@ -153,6 +164,17 @@ describe('delete_project Tool', () => {
       
       const taskData = verifyToolSuccessResponse<{ task: { id: string } }>(nextTaskResult);
       const taskId = taskData.task.id;
+
+      // Add: Mark task as 'in progress'
+      await context.client.callTool({
+        name: "update_task",
+        arguments: {
+          projectId,
+          taskId,
+          status: "in progress",
+          completedDetails: ""
+        }
+      });
 
       // Mark task as done
       await context.client.callTool({

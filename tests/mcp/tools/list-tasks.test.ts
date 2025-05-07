@@ -109,16 +109,29 @@ describe('list_tasks Tool', () => {
       });
 
       // Get task IDs for each task
-      const tasks = (await context.client.callTool({
+      const tasksResult = await context.client.callTool({
         name: "list_tasks",
         arguments: { projectId }
-      }) as CallToolResult);
-      const [notStartedTaskId, doneNotApprovedTaskId, completedTaskId] = JSON.parse((tasks.content[0] as { text: string }).text)
-        .tasks.map((t: any) => t.id);
+      }) as CallToolResult;
+      const tasksInProject = JSON.parse((tasksResult.content[0] as { text: string }).text).tasks;
+      const doneNotApprovedTaskId = tasksInProject.find((t:any) => t.title === "Done But Not Approved Task").id;
+      const completedTaskId = tasksInProject.find((t:any) => t.title === "Completed And Approved Task").id;
       
       // Set up task states:
       // 1. Leave first task as is (not started)
+      
       // 2. Mark second task as done (but not approved)
+      //    not started -> in progress
+      await context.client.callTool({
+        name: "update_task",
+        arguments: {
+          projectId,
+          taskId: doneNotApprovedTaskId,
+          status: "in progress",
+          completedDetails: ""
+        }
+      });
+      //    in progress -> done
       await context.client.callTool({
         name: "update_task",
         arguments: {
@@ -130,6 +143,17 @@ describe('list_tasks Tool', () => {
       });
 
       // 3. Mark third task as done and approved
+      //    not started -> in progress
+      await context.client.callTool({
+        name: "update_task",
+        arguments: {
+          projectId,
+          taskId: completedTaskId,
+          status: "in progress",
+          completedDetails: ""
+        }
+      });
+      //    in progress -> done
       await context.client.callTool({
         name: "update_task",
         arguments: {
@@ -216,21 +240,34 @@ describe('list_tasks Tool', () => {
       });
 
       // Get task IDs for each project
-      const p1Tasks = (await context.client.callTool({
+      const p1TasksResult = await context.client.callTool({
         name: "list_tasks",
         arguments: { projectId: project1Id }
-      }) as CallToolResult);
-      const [p1OpenTaskId, p1CompletedTaskId] = JSON.parse((p1Tasks.content[0] as { text: string }).text)
-        .tasks.map((t: any) => t.id);
+      }) as CallToolResult;
+      const p1TasksInProject = JSON.parse((p1TasksResult.content[0] as { text: string }).text).tasks;
+      const p1OpenTaskId = p1TasksInProject.find((t:any) => t.title === "P1 Not Started Task").id;
+      const p1CompletedTaskId = p1TasksInProject.find((t:any) => t.title === "P1 Completed Task").id;
 
-      const p2Tasks = (await context.client.callTool({
+      const p2TasksResult = await context.client.callTool({
         name: "list_tasks",
         arguments: { projectId: project2Id }
-      }) as CallToolResult);
-      const [p2OpenTaskId, p2CompletedTaskId] = JSON.parse((p2Tasks.content[0] as { text: string }).text)
-        .tasks.map((t: any) => t.id);
+      }) as CallToolResult;
+      const p2TasksInProject = JSON.parse((p2TasksResult.content[0] as { text: string }).text).tasks;
+      const p2OpenTaskId = p2TasksInProject.find((t:any) => t.title === "P2 Not Started Task").id;
+      const p2CompletedTaskId = p2TasksInProject.find((t:any) => t.title === "P2 Completed Task").id;
 
       // Complete and approve one task in each project
+      // Project 1, p1CompletedTaskId: not started -> in progress
+      await context.client.callTool({
+        name: "update_task",
+        arguments: {
+          projectId: project1Id,
+          taskId: p1CompletedTaskId,
+          status: "in progress",
+          completedDetails: ""
+        }
+      });
+      // Project 1, p1CompletedTaskId: in progress -> done
       await context.client.callTool({
         name: "update_task",
         arguments: {
@@ -249,6 +286,17 @@ describe('list_tasks Tool', () => {
         }
       });
 
+      // Project 2, p2CompletedTaskId: not started -> in progress
+      await context.client.callTool({
+        name: "update_task",
+        arguments: {
+          projectId: project2Id,
+          taskId: p2CompletedTaskId,
+          status: "in progress",
+          completedDetails: ""
+        }
+      });
+      // Project 2, p2CompletedTaskId: in progress -> done
       await context.client.callTool({
         name: "update_task",
         arguments: {
