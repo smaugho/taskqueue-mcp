@@ -708,6 +708,7 @@ export class TaskManager {
     }
 
     const projectDataForFormatter: StatusFileProjectData | null = projectData ? {
+        projectId: projectData.projectId,
         initialPrompt: projectData.initialPrompt,
         projectPlan: projectData.projectPlan,
         completedTasks: projectData.tasks.filter(t => t.status === 'done' && t.approved).length,
@@ -716,6 +717,7 @@ export class TaskManager {
 
     if (taskData) {
       taskDataForFormatter = {
+        taskId: taskData.id,
         title: taskData.title,
         description: taskData.description,
         status: taskData.status as "not started" | "in progress" | "done",

@@ -129,11 +129,13 @@ describe('current_status.mdc Updates Feature (E2E Acceptance)', () => {
         const updatedTask = (verifyToolSuccessResponse<any>(taskResult)).task;
 
         const projectForFormatter: StatusFileProjectData = {
+          projectId: project.projectId,
           initialPrompt: project.initialPrompt,
           projectPlan: project.projectPlan,
         };
         const taskForFormatter: StatusFileTaskData = {
           ...updatedTask,
+          taskId: updatedTask.id,
           status: updatedTask.status as "not started" | "in progress" | "done",
         };
         const expectedContent = formatStatusFileContent(
@@ -155,8 +157,16 @@ describe('current_status.mdc Updates Feature (E2E Acceptance)', () => {
         const taskResult = await contextActive.client.callTool({name: "read_task", arguments: { projectId: project.projectId, taskId: task.id }}) as CallToolResult;
         const updatedTask = (verifyToolSuccessResponse<any>(taskResult)).task;
         
-        const projectForFormatter: StatusFileProjectData = { initialPrompt: project.initialPrompt, projectPlan: project.projectPlan };
-        const taskForFormatter: StatusFileTaskData = { ...updatedTask, status: updatedTask.status as "not started" | "in progress" | "done" };
+        const projectForFormatter: StatusFileProjectData = {
+          projectId: project.projectId,
+          initialPrompt: project.initialPrompt,
+          projectPlan: project.projectPlan,
+        };
+        const taskForFormatter: StatusFileTaskData = {
+          ...updatedTask,
+          taskId: updatedTask.id,
+          status: updatedTask.status as "not started" | "in progress" | "done",
+        };
         const expectedContent = formatStatusFileContent(
           { ...projectForFormatter, completedTasks: 0, totalTasks: 1 },
           taskForFormatter
@@ -185,8 +195,16 @@ describe('current_status.mdc Updates Feature (E2E Acceptance)', () => {
         const taskResult = await contextActive.client.callTool({name: "read_task", arguments: { projectId: project.projectId, taskId: task.id }}) as CallToolResult;
         const updatedTask = (verifyToolSuccessResponse<any>(taskResult)).task;
 
-        const projectForFormatter: StatusFileProjectData = { initialPrompt: updatedProj.initialPrompt, projectPlan: updatedProj.projectPlan };
-        const taskForFormatter: StatusFileTaskData = { ...updatedTask, status: updatedTask.status as "not started" | "in progress" | "done" };
+        const projectForFormatter: StatusFileProjectData = {
+          projectId: updatedProj.projectId,
+          initialPrompt: updatedProj.initialPrompt,
+          projectPlan: updatedProj.projectPlan,
+        };
+        const taskForFormatter: StatusFileTaskData = {
+          ...updatedTask,
+          taskId: updatedTask.id,
+          status: updatedTask.status as "not started" | "in progress" | "done",
+        };
         const expectedContent = formatStatusFileContent(
           { ...projectForFormatter, completedTasks: 0, totalTasks: 1 },
           taskForFormatter
@@ -208,8 +226,16 @@ describe('current_status.mdc Updates Feature (E2E Acceptance)', () => {
         const taskResult = await contextActive.client.callTool({name: "read_task", arguments: { projectId: project.projectId, taskId: task.id }}) as CallToolResult;
         const updatedTask = (verifyToolSuccessResponse<any>(taskResult)).task;
 
-        const projectForFormatter: StatusFileProjectData = { initialPrompt: project.initialPrompt, projectPlan: project.projectPlan };
-        const taskForFormatter: StatusFileTaskData = { ...updatedTask, status: updatedTask.status as "not started" | "in progress" | "done" };
+        const projectForFormatter: StatusFileProjectData = {
+          projectId: project.projectId,
+          initialPrompt: project.initialPrompt,
+          projectPlan: project.projectPlan,
+        };
+        const taskForFormatter: StatusFileTaskData = {
+          ...updatedTask,
+          taskId: updatedTask.id,
+          status: updatedTask.status as "not started" | "in progress" | "done",
+        };
         const expectedContent = formatStatusFileContent(
           { ...projectForFormatter, completedTasks: 0, totalTasks: 1 },
           taskForFormatter
@@ -240,8 +266,16 @@ describe('current_status.mdc Updates Feature (E2E Acceptance)', () => {
         const task2Result = await contextActive.client.callTool({name: "read_task", arguments: { projectId: p2.projectId, taskId: t2.id }}) as CallToolResult;
         const t2DataUpdated = (verifyToolSuccessResponse<any>(task2Result)).task;
 
-        const p2DataForFormatter: StatusFileProjectData = { initialPrompt: p2Data.initialPrompt, projectPlan: p2Data.projectPlan };
-        const t2DataUpdatedForFormatter: StatusFileTaskData = { ...t2DataUpdated, status: t2DataUpdated.status as "not started" | "in progress" | "done" };
+        const p2DataForFormatter: StatusFileProjectData = {
+          projectId: p2Data.projectId,
+          initialPrompt: p2Data.initialPrompt,
+          projectPlan: p2Data.projectPlan,
+        };
+        const t2DataUpdatedForFormatter: StatusFileTaskData = {
+          ...t2DataUpdated,
+          taskId: t2DataUpdated.id,
+          status: t2DataUpdated.status as "not started" | "in progress" | "done",
+        };
         const expectedContent = formatStatusFileContent(
           { ...p2DataForFormatter, completedTasks: 0, totalTasks: 1 },
           t2DataUpdatedForFormatter
@@ -282,17 +316,19 @@ describe('current_status.mdc Updates Feature (E2E Acceptance)', () => {
         const taskResult = await contextActive.client.callTool({name: "read_task", arguments: { projectId: project.projectId, taskId: task.id }}) as CallToolResult;
         const updatedTask = (verifyToolSuccessResponse<any>(taskResult)).task;
 
-        const projectForFormatter: StatusFileProjectData = { 
-          initialPrompt: updatedProj.initialPrompt, 
+        const projectForFormatter: StatusFileProjectData = {
+          projectId: updatedProj.projectId,
+          initialPrompt: updatedProj.initialPrompt,
           projectPlan: updatedProj.projectPlan,
           completedTasks: 0,
           totalTasks: 1,
         };
-        const taskForFormatter: StatusFileTaskData = { 
-          ...updatedTask, 
+        const taskForFormatter: StatusFileTaskData = {
+          ...updatedTask,
+          taskId: updatedTask.id,
           status: updatedTask.status as "not started" | "in progress" | "done",
-          relevantRuleFilename: ruleFileName, // This should be picked up by TaskManager
-          relevantRuleExcerpt: ruleFileContent, // This should be picked up by TaskManager
+          relevantRuleFilename: ruleFileName,
+          relevantRuleExcerpt: ruleFileContent,
         };
         
         const expectedContent = formatStatusFileContent(

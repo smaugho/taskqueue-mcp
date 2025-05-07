@@ -2,6 +2,7 @@ import os from 'os';
 
 // Interface for project data passed to the formatter
 export interface StatusFileProjectData {
+  projectId?: string;
   initialPrompt: string;
   projectPlan: string;
   isFinalized?: boolean; 
@@ -11,6 +12,7 @@ export interface StatusFileProjectData {
 
 // Interface for task data passed to the formatter
 export interface StatusFileTaskData {
+  taskId?: string;
   title: string;
   description: string;
   status: "not started" | "in progress" | "done";
@@ -34,7 +36,11 @@ export function formatStatusFileContent(
 ): string {
   let projectSection = "None";
   if (project && typeof project.initialPrompt === 'string') {
-    let projectDetails = `Project Name: ${project.initialPrompt}`;
+    let projectDetails = "";
+    if (project.projectId) {
+      projectDetails += `Project ID: ${project.projectId}${os.EOL}`;
+    }
+    projectDetails += `Project Name: ${project.initialPrompt}`;
     const completed = project.completedTasks ?? 0;
     const total = project.totalTasks ?? 0;
     const statusText = project.isFinalized ? `Finalized (${completed}/${total} tasks completed)` : `In Progress (${completed}/${total} tasks completed)`;
@@ -51,7 +57,11 @@ export function formatStatusFileContent(
   let ruleExcerptSection = ""; // Initialize rule excerpt section
 
   if (task && typeof task.title === 'string') {
-    let taskDetails = `Title: ${task.title}`;
+    let taskDetails = "";
+    if (task.taskId) {
+      taskDetails += `Task ID: ${task.taskId}${os.EOL}`;
+    }
+    taskDetails += `Title: ${task.title}`;
     
     const displayStatus = task.approved ? 'approved' : task.status;
     taskDetails += `${os.EOL}Status: ${displayStatus}`;

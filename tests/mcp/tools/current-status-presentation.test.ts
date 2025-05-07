@@ -411,4 +411,96 @@ describe('Current Status Rule File Formatting', () => {
       expect(content).toContain(expectedSection);
     });
   });
+
+  describe('Project and Task ID Formatting', () => {
+    it('should include Project ID when projectId is provided in project data', () => {
+      // Arrange
+      const project: StatusFileProjectData = {
+        projectId: 'proj-123',
+        initialPrompt: 'Project With ID',
+        projectPlan: 'Plan for project with ID.',
+      };
+      
+      // Act
+      const content = formatStatusFileContent(project, null);
+      
+      // Assert
+      expect(content).toContain(`Project ID: proj-123${EOL}Project Name: Project With ID`);
+    });
+
+    it('should include Task ID when taskId is provided in task data', () => {
+      // Arrange
+      const task: StatusFileTaskData = {
+        taskId: 'task-456',
+        title: 'Task With ID',
+        description: 'Description for task with ID.',
+        status: 'in progress',
+        approved: false,
+        completedDetails: "",
+      };
+      
+      // Act
+      const content = formatStatusFileContent(null, task);
+      
+      // Assert
+      expect(content).toContain(`Task ID: task-456${EOL}Title: Task With ID`);
+    });
+
+    it('should include both Project ID and Task ID when both are provided', () => {
+      // Arrange
+      const project: StatusFileProjectData = {
+        projectId: 'proj-789',
+        initialPrompt: 'Project Alpha',
+        projectPlan: 'Plan Alpha.',
+      };
+      const task: StatusFileTaskData = {
+        taskId: 'task-101',
+        title: 'Task Beta',
+        description: 'Description Beta.',
+        status: 'done',
+        approved: true,
+        completedDetails: "Done Beta",
+      };
+      
+      // Act
+      const content = formatStatusFileContent(project, task);
+      
+      // Assert
+      expect(content).toContain(`Project ID: proj-789${EOL}Project Name: Project Alpha`);
+      expect(content).toContain(`Task ID: task-101${EOL}Title: Task Beta`);
+    });
+
+    it('should correctly format project details without projectId if not provided', () => {
+      // Arrange
+      const project: StatusFileProjectData = {
+        initialPrompt: 'Project No ID',
+        projectPlan: 'Plan for project with no ID.',
+      };
+      
+      // Act
+      const content = formatStatusFileContent(project, null);
+      
+      // Assert
+      expect(content).not.toContain('Project ID:');
+      expect(content).toContain(`Project Name: Project No ID`);
+    });
+
+    it('should correctly format task details without taskId if not provided', () => {
+      // Arrange
+      const task: StatusFileTaskData = {
+        title: 'Task No ID',
+        description: 'Description for task with no ID.',
+        status: 'not started',
+        approved: false,
+        completedDetails: "",
+      };
+      
+      // Act
+      const content = formatStatusFileContent(null, task);
+      
+      // Assert
+      expect(content).not.toContain('Task ID:');
+      expect(content).toContain(`Title: Task No ID`);
+    });
+  });
 }); 
