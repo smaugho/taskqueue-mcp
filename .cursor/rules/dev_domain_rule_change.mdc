@@ -16,5 +16,5 @@ flowchart TD
 ```
 
 - **Task **`Impact Analysis`**: Identify all affected E2E scenarios; spawn child projects for new behaviour; create parent tasks to remove obsolete scenarios; record IDs in `completedDetails`.
-- **Task **`Remove Obsolete Scenario: [Name]`**: Delete obsolete test/code; validate; propose commit; await confirmation; commit; record hash.
+- **Task **`Remove Obsolete Scenario: [Name]`**: Delete obsolete test/code; validate; propose commit; await confirmation from human developer; commit; record hash.
 - **Task **`Global Verification & Close`**: Ensure all child projects and removal tasks are approved; run validation suite; finalize parent project after approval.

@@ -28,11 +28,63 @@ flowchart TD
 
 - **Task `Acceptance Test (E2E) – Red`**: Write the high‑level failing E2E test(s) defining the desired user‑facing behaviour. **Tests MUST follow `testing_strategy.mdc` (behavioural focus, AAA structure, resilience).** Validate the expected failure and document it.
 - **Task `Plan Review #n`**:
-    - **Run the primary Acceptance Test(s).**
-    - If they pass → Decide whether more work is needed **ONLY after perform the reference Gathering for New Tasks**. If not, propose a `Review Documentation` task; else propose the next `Component Batch – Red`, `Component Batch – Green`, `Component Batch – Refactor` and `Plan Review`.
-    - If they fail → Analyse failures and propose the required `Component Batch #n+1 – Red`, `Component Batch #n+1 – Green`, `Component Batch #n+1 – Refactor` plus next `Plan Review`.
-    - **Present the analysis and proposed plan to the human developer and await explicit confirmation.** After confirmation, add tasks with `mcp_taskqueue_add_tasks_to_project` and record details in `completedDetails`.
-- **Task `Component Batch #n – Red`**: Write a failing unit/integration test (state‑verification focus) that specifies the new behaviour or a component of it, ensuring it aligns with the overall acceptance criteria. Tests must follow `testing_strategy.mdc` (including lint checks 0 errors). Validate the expected failure.
-- **Task `Component Batch #n – Green`**: Write the minimal production code to make the failing test from the "Red" phase pass. Focus solely on making the test pass; do not add extra features or refactor at this stage. Validate that all relevant tests now pass.
-- **Task `Component Batch #n – Refactor`**: Improve the internal structure of the code written in the "Green" phase (and potentially related existing code) without changing its external behaviour. This includes removing duplication, improving clarity, and adhering to coding standards. Ensure all tests still pass. Propose further test improvements for the next Plan Review. After validation, **propose commit (include `.tasks.json`) → await confirmation → commit → record hash.**
-- **Task `Review Documentation`**: Update docs/rules, propose commit, await confirmation, commit, record hash.
+    - Run the full validation suite (`yarn test`, `yarn lint`, `yarn build`, `yarn start -h`, `yarn test:db:verify`, `yarn test:e2e`), including the primary Acceptance Test(s).
+    - Analyse the results of the validation suite, paying close attention to the primary Acceptance Test(s) outcome.
+    - **Decision Point & Planning (based on analysis and primary Acceptance Test outcome):**
+        - **Scenario 1: Primary Acceptance Tests pass AND further component work is deemed necessary.**
+            - **Mandatory Pre-Formulation Step: Perform Reference Gathering.** Following the `dev_workflow` procedure for "Reference Gathering for New Tasks", collect all necessary references. This informs the formulation of all proposed new tasks detailed below.
+            - Formulate a detailed plan for the next iteration, including:
+                - `Component Batch #n+1 – Red` task.
+                - `Component Batch #n+1 – Green` task.
+                - `Component Batch #n+1 – Refactor` task.
+                - The subsequent `Plan Review #n+1` task.
+            - This plan formulation **MUST** include the **full, detailed analysis and strategic statements** that will serve as the complete description for the `Plan Review #n+1` task.
+        - **Scenario 2: Primary Acceptance Tests pass AND no further component work is needed (use case implementation complete).**
+            - **Mandatory Pre-Formulation Step: Perform Reference Gathering.** Following the `dev_workflow` procedure for "Reference Gathering for New Tasks", collect all necessary references. This informs the formulation of the `Review Documentation` task detailed below.
+            - Formulate a detailed plan for the `Review Documentation` task.
+            - This plan formulation **MUST** include the **full, detailed analysis and concluding statements** that will serve as the complete description for the `Review Documentation` task.
+        - **Scenario 3: Primary Acceptance Tests fail.**
+            - Conduct a thorough analysis of the failures.
+            - **Mandatory Pre-Formulation Step: Perform Reference Gathering.** Following the `dev_workflow` procedure for "Reference Gathering for New Tasks", collect all necessary references. This informs the formulation of all proposed new tasks detailed below.
+            - Formulate a detailed plan to address the failures, including:
+                - The required `Component Batch #n+1 – Red` task.
+                - `Component Batch #n+1 – Green` task.
+                - `Component Batch #n+1 – Refactor` task.
+                - The subsequent `Plan Review #n+1` task.
+            - This plan formulation **MUST** include the **full, detailed analysis of failures and strategic remediation plan** that will serve as the complete description for the `Plan Review #n+1` task.
+    - **Present the complete analysis and the comprehensive proposed plan (clearly indicating which scenario above was chosen and including the intended full description for the *next* task – be it a Plan Review or Review Documentation) to the human developer.**
+    - **Await explicit confirmation and approval from the human developer before proceeding to create any tasks.**
+    - Upon receiving approval:
+        - Create the proposed tasks as per the approved plan (e.g., next Component Batch cycle and its Plan Review, or the Review Documentation task). The description for the *next* `Plan Review` or `Review Documentation` task **MUST** be populated with the corresponding full, detailed analysis and plan formulated earlier for the upcoming work, and **MUST also carry forward any unresolved items, pending decisions, or deferred topics from the current `Plan Review #n`** that were not actioned, unless explicitly removed by the human developer. Use `mcp_taskqueue_add_tasks_to_project`.
+        - Record the human developer's approval and the successful creation of these new tasks in the `completedDetails` for this `Plan Review #n` task.
+- **Task `Component Batch #n – Red`**:
+    - Write a failing unit/integration test (state‑verification focus) that specifies the new behaviour or a component of it, ensuring it aligns with the overall acceptance criteria.
+    - The primary focus is on crafting the test itself.
+    - No functional implementation should be created in this phase, with the potential exception of definitions (e.g., interfaces, types, empty function signatures) absolutely necessary for the test to compile and express the intended behavior. Actual functional implementation is deferred to the Green phase.
+    - Tests must follow `testing_strategy.mdc` (including lint checks 0 errors and warnings).
+    - Refer to `code_quality.mdc` for general coding standards.
+    - Validate the expected failure.
+- **Task `Component Batch #n – Green`**:
+    - Write the minimal production code strictly to make the failing test from the "Red" phase pass.
+    - Focus solely on this minimal implementation; do not add extra features or refactor at this stage.
+    - If it is discovered that a test from the "Red" phase needs to be updated or changed, this situation **MUST** be explained to the human developer, and the test **MUST NOT** be updated unless explicit approval to do so is given by the human developer.
+    - Refer to `code_quality.mdc` for general coding standards.
+    - Validate that all relevant tests now pass.
+- **Task `Component Batch #n – Refactor`**:
+    - Improve the internal structure of the code written in the "Green" phase (and potentially related existing code) without changing its external behaviour. This includes removing duplication, improving clarity, removing unnecessary comments, and adhering to coding standards.
+    - Actively look for opportunities to improve other parts of the files that were touched during the "Green" phase, even if these improvements are not directly related to the immediate objective of the current task.
+    - Ensure all tests still pass.
+    - Propose further test improvements for the next Plan Review.
+    - Refer to `code_quality.mdc` for general coding standards.
+    - After validation, **propose commit (include `.tasks.json`) → await confirmation from human developer → commit → record hash.**
+- **Task `Review Documentation`**: Update docs/rules, propose commit, await confirmation from human developer, commit, record hash.
+
+- **Capturing Broader Plan Feedback Mid-Task**:
+    - If, while a `Component Batch #n` task (Red, Green, or Refactor) is in progress, the human developer provides input or requests modifications that pertain to the *overall project plan* or scope for *future batches* (rather than the current task):
+        - Acknowledge the human developer\'s input.
+        - The AI agent should analyze and potentially enrich this input.
+        - The AI agent **MUST** then identify the *next sequential, unapproved* task in the current project that is either a `Plan Review #(n+1)` (or similarly named, e.g., `Plan Review #2` if the current batch is `#1`) or the `Review Documentation` task (if this is the final component batch cycle). This involves:
+            - Using `mcp_taskqueue_list_tasks` for the current `projectId`.
+            - Filtering these tasks to find the relevant future `Plan Review` or `Review Documentation` task by its title and ensuring it is not yet approved.
+        - The AI agent **MUST** then update the description of this identified future `Plan Review` or `Review Documentation` task by *appending* the human developer\'s input and any AI-generated enrichment. Care **MUST** be taken to preserve all existing content in that future task\'s description, especially the detailed plan carried over from any preceding Plan Review.
+        - The current `Component Batch #n` task should then continue as originally defined, with the developer\'s broader plan feedback now safely captured for consideration at the next formal planning stage.
