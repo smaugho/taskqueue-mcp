@@ -624,5 +624,44 @@ describe('current_status.mdc Updates Feature (E2E Acceptance)', () => {
         expect(content).toEqual(expectedContent);
       });
     });
+
+    it('should create/update current_status.mdc when get_next_task returns a pre-existing \'in progress\' task', async () => {
+      // Arrange
+      const projectDetails = { initialPrompt: "ProjectWithInProgressTask", projectPlan: "Plan for in-progress" };
+      const taskDetails = { title: "AlreadyInProgressTask", description: "This task starts in progress", status: 'in progress' as const };
+      
+      // Directly create project and task with status 'in progress' in the test file
+      const { project, task } = await setupProjectAndTaskInFile(contextActive, projectDetails, taskDetails);
+
+      // Act: Call get_next_task
+      const getNextTaskResult = await contextActive.client.callTool({
+        name: "get_next_task",
+        arguments: { projectId: project.projectId }
+      }) as CallToolResult;
+      const nextTaskData = verifyToolSuccessResponse<{task: Task}>(getNextTaskResult);
+
+      // Assert: current_status.mdc should now reflect the in-progress task
+      const statusFileContent = await readFileIfExists(getStatusFilePath(currentProjectPath));
+      
+      const projectForFormatter: StatusFileProjectData = {
+        projectId: project.projectId,
+        initialPrompt: project.initialPrompt,
+        projectPlan: project.projectPlan,
+      };
+      // Use the task details as fetched by get_next_task
+      const taskForFormatter: StatusFileTaskData = {
+        ...nextTaskData.task, // task object from get_next_task response
+        taskId: nextTaskData.task.id,
+      };
+
+      const projRead = await contextActive.client.callTool({name: "read_project", arguments: {projectId: project.projectId}}) as CallToolResult;
+      const projDetails = verifyToolSuccessResponse<Project>(projRead);
+
+      const expectedContent = formatStatusFileContent(
+        { ...projectForFormatter, completedTasks: projDetails.tasks.filter(t => t.status === 'done').length, totalTasks: projDetails.tasks.length },
+        taskForFormatter
+      );
+      expect(statusFileContent).toEqual(expectedContent);
+    });
   });
 }); 

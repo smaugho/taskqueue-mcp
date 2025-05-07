@@ -291,6 +291,10 @@ export class TaskManager {
       throw new AppError('No incomplete or unapproved tasks found', AppErrorCode.TaskNotFound);
     }
 
+    if (process.env.CURRENT_PROJECT_PATH && nextTask.status === 'in progress') {
+      await this._updateCurrentStatusFile(proj.projectId, nextTask.id, nextTask.status, nextTask.status);
+    }
+
     return {
       projectId: proj.projectId,
       task: { ...nextTask },
