@@ -3,7 +3,6 @@ description: Workflow to follow for the Job / Project Category - Domain Rule Cha
 globs:
 alwaysApply: false
 ---
-
 ```mermaid
 flowchart TD
     A[Impact Analysis] -- Spawns Child Projects --> B(Child Projects: New Use Case);
@@ -15,6 +14,36 @@ flowchart TD
     style C fill:#f9f,stroke:#333,stroke-width:2px
 ```
 
-- **Task **`Impact Analysis`**: Identify all affected E2E scenarios; spawn child projects for new behaviour; create parent tasks to remove obsolete scenarios; record IDs in `completedDetails`.
-- **Task **`Remove Obsolete Scenario: [Name]`**: Delete obsolete test/code; validate; propose commit; await confirmation from human developer; commit; record hash.
-- **Task **`Global Verification & Close`**: Ensure all child projects and removal tasks are approved; run validation suite; finalize parent project after approval.
+- **Task **`Impact Analysis`**:
+    - **Initial Step:** Upon starting this task, its status **MUST** be updated to `in progress` using `mcp_taskqueue_update_task(projectId, taskId, status='in progress')`.
+    - Identify all affected E2E scenarios; spawn child projects for new behaviour (tasks within these child projects will follow their respective category workflows).
+    - Create parent tasks within the current project to remove obsolete scenarios. When creating these parent tasks, if multiple are created concurrently, their descriptions **MUST** follow the structure outlined in `dev_workflow.mdc`, including the "Related Tasks" section to link them to each other by title and ID.
+    - Record IDs of spawned child projects and created parent tasks in `completedDetails`.
+- **Task **`Remove Obsolete Scenario: [Name]`**:
+    - **Initial Step:** Upon starting this task, its status **MUST** be updated to `in progress` using `mcp_taskqueue_update_task(projectId, taskId, status='in progress')`.
+    - Delete obsolete test/code; validate; then follow the **Standard Commit Procedure** (detailed below in this document). Record the commit hash in `completedDetails`.
+- **Task **`Global Verification & Close`**:
+    - **Initial Step:** Upon starting this task, its status **MUST** be updated to `in progress` using `mcp_taskqueue_update_task(projectId, taskId, status='in progress')`.
+    - Ensure all child projects and removal tasks are approved.
+    - Run the full validation suite by executing the following commands one at a time, ensuring each passes before running the next: `npm test`.
+    - Finalize parent project after approval.
+
+- **Standard Commit Procedure**:
+    All commits, whether scheduled within a task (e.g., after deleting an obsolete scenario) or requested ad-hoc by the human developer, **MUST** follow this procedure:
+
+    1.  **Identify Changes:** Review the files modified in the workspace (e.g., using `git status --porcelain` or IDE indicators) that are ready to be committed.
+    2.  **Craft Commit Message:** Prepare a commit message adhering to the Conventional Commits standard (see `commitlint.config.js`, which extends `@commitlint/config-conventional`). The message should accurately describe the work performed. Examples for Domain Rule Change:
+        *   `refactor: remove obsolete scenario X related to old domain rule`
+        *   `fix: adjust tests after removal of Y for domain rule change`
+        *   `chore: clean up unused code from Z due to domain rule update`
+    3.  **Seek Approval & Stage Files:**
+        *   Present the list of files to be committed and the proposed commit message to the human developer for approval.
+        *   Upon receiving approval, stage **only** the agreed-upon files using the appropriate git command (e.g., `git add <file1> <file2>...` or `git add path/to/specific/file.ts`). This should be a single terminal command. *Avoid using `git add .` unless explicitly approved and all unstaged changes are intended for the commit.*
+    4.  **Perform Commit:** Execute the commit with the approved message (e.g., `git commit -m "Your conventional commit message"`). This should be a separate terminal command. Husky pre-commit hooks (linting, tests, etc.) will run automatically.
+    5.  **Handle Hook Results & Record Hash:**
+        *   **If Husky hooks fail:** The issues reported by Husky (e.g., linting errors, failing tests) **MUST** be corrected. After corrections, return to Step 3 (Seek Approval & Stage Files, as files will have changed) and repeat the commit process for the corrected changes.
+        *   **If Husky hooks pass:** Obtain the commit hash (e.g., using `git log -1 --pretty=format:%H`). This hash **MUST** be recorded in the `completedDetails` of the current task when it is marked as 'done'.
+
+    **Condition for Committing in Domain Rule Change Category:**
+    *   **Scheduled Commits (e.g., after `Remove Obsolete Scenario` tasks):** All validations defined for that task (relevant tests passing, lint, build) **MUST** pass.
+    *   **Ad-hoc Commits (requested by human developer mid-task):** All relevant tests (unit, integration, and E2E if applicable to the change) for the changes being committed **MUST** be passing. Linting and build checks for the files being committed **MUST** be clean. The human developer provides the final go-ahead.

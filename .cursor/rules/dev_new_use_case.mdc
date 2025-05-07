@@ -26,9 +26,12 @@ flowchart TD
     style G fill:#f9f,stroke:#333,stroke-width:2px
 ```
 
-- **Task `Acceptance Test (E2E) – Red`**: Write the high‑level failing E2E test(s) defining the desired user‑facing behaviour. **Tests MUST follow `testing_strategy.mdc` (behavioural focus, AAA structure, resilience).** Validate the expected failure and document it.
+- **Task `Acceptance Test (E2E) – Red`**:
+    - **Initial Step:** Upon starting this task, its status **MUST** be updated to `in progress` using `mcp_taskqueue_update_task(projectId, taskId, status='in progress')`.
+    - Write the high‑level failing E2E test(s) defining the desired user‑facing behaviour. **Tests MUST follow `testing_strategy.mdc` (behavioural focus, AAA structure, resilience).** Validate the expected failure and document it.
 - **Task `Plan Review #n`**:
-    - Run the full validation suite (`npm test`), including the primary Acceptance Test(s).
+    - **Initial Step:** Upon starting this task, its status **MUST** be updated to `in progress` using `mcp_taskqueue_update_task(projectId, taskId, status='in progress')`.
+    - Run the full validation suite by executing the following commands one at a time, ensuring each passes before running the next: `npm test`. This includes the primary Acceptance Test(s).
     - Analyse the results of the validation suite, paying close attention to the primary Acceptance Test(s) outcome.
     - **Decision Point & Planning (based on analysis and primary Acceptance Test outcome):**
         - **Scenario 1: Primary Acceptance Tests pass AND further component work is deemed necessary.**
@@ -55,9 +58,11 @@ flowchart TD
     - **Present the complete analysis and the comprehensive proposed plan (clearly indicating which scenario above was chosen and including the intended full description for the *next* task – be it a Plan Review or Review Documentation) to the human developer.**
     - **Await explicit confirmation and approval from the human developer before proceeding to create any tasks.**
     - Upon receiving approval:
-        - Create the proposed tasks as per the approved plan (e.g., next Component Batch cycle and its Plan Review, or the Review Documentation task). The description for the *next* `Plan Review` or `Review Documentation` task **MUST** be populated with the corresponding full, detailed analysis and plan formulated earlier for the upcoming work, and **MUST also carry forward any unresolved items, pending decisions, or deferred topics from the current `Plan Review #n`** that were not actioned, unless explicitly removed by the human developer. Use `mcp_taskqueue_add_tasks_to_project`.
+        - Create the proposed tasks as per the approved plan (e.g., next Component Batch cycle and its Plan Review, or the Review Documentation task). When doing so, ensure that the description of each new task adheres to the structure defined in `dev_workflow.mdc`, explicitly including the "Related Tasks" section to link it with other concurrently created tasks (e.g., listing other batch tasks and the next Plan Review task by title and ID). Use `mcp_taskqueue_add_tasks_to_project`.
+        - The description for the *next* `Plan Review` or `Review Documentation` task **MUST** be populated with the corresponding full, detailed analysis and plan formulated earlier for the upcoming work, and **MUST also carry forward any unresolved items, pending decisions, or deferred topics from the current `Plan Review #n`** that were not actioned, unless explicitly removed by the human developer.
         - Record the human developer's approval and the successful creation of these new tasks in the `completedDetails` for this `Plan Review #n` task.
 - **Task `Component Batch #n – Red`**:
+    - **Initial Step:** Upon starting this task, its status **MUST** be updated to `in progress` using `mcp_taskqueue_update_task(projectId, taskId, status='in progress')`.
     - Write a failing unit/integration test (state‑verification focus) that specifies the new behaviour or a component of it, ensuring it aligns with the overall acceptance criteria.
     - The primary focus is on crafting the test itself.
     - No functional implementation should be created in this phase, with the potential exception of definitions (e.g., interfaces, types, empty function signatures) absolutely necessary for the test to compile and express the intended behavior. Actual functional implementation is deferred to the Green phase.
@@ -65,19 +70,23 @@ flowchart TD
     - Refer to `code_quality.mdc` for general coding standards.
     - Validate the expected failure.
 - **Task `Component Batch #n – Green`**:
+    - **Initial Step:** Upon starting this task, its status **MUST** be updated to `in progress` using `mcp_taskqueue_update_task(projectId, taskId, status='in progress')`.
     - Write the minimal production code strictly to make the failing test from the "Red" phase pass.
     - Focus solely on this minimal implementation; do not add extra features or refactor at this stage.
     - If it is discovered that a test from the "Red" phase needs to be updated or changed, this situation **MUST** be explained to the human developer, and the test **MUST NOT** be updated unless explicit approval to do so is given by the human developer.
     - Refer to `code_quality.mdc` for general coding standards.
     - Validate that all relevant tests now pass.
 - **Task `Component Batch #n – Refactor`**:
+    - **Initial Step:** Upon starting this task, its status **MUST** be updated to `in progress` using `mcp_taskqueue_update_task(projectId, taskId, status='in progress')`.
     - Improve the internal structure of the code written in the "Green" phase (and potentially related existing code) without changing its external behaviour. This includes removing duplication, improving clarity, removing unnecessary comments, and adhering to coding standards.
     - Actively look for opportunities to improve other parts of the files that were touched during the "Green" phase, even if these improvements are not directly related to the immediate objective of the current task.
     - Ensure all tests still pass.
     - Propose further test improvements for the next Plan Review.
     - Refer to `code_quality.mdc` for general coding standards.
-    - After validation, **propose commit → await confirmation from human developer → commit → record hash.**
-- **Task `Review Documentation`**: Update docs/rules, propose commit, await confirmation from human developer, commit, record hash.
+    - After validation, follow the **Standard Commit Procedure** (detailed below in this document, ensuring to include `.tasks.json` in the commit). Record the commit hash in `completedDetails`.
+- **Task `Review Documentation`**:
+    - **Initial Step:** Upon starting this task, its status **MUST** be updated to `in progress` using `mcp_taskqueue_update_task(projectId, taskId, status='in progress')`.
+    - Update docs/rules, then follow the **Standard Commit Procedure** (detailed below in this document). Record the commit hash in `completedDetails`.
 
 - **Capturing Broader Plan Feedback Mid-Task**:
     - If, while a `Component Batch #n` task (Red, Green, or Refactor) is in progress, the human developer provides input or requests modifications that pertain to the *overall project plan* or scope for *future batches* (rather than the current task):
@@ -88,3 +97,24 @@ flowchart TD
             - Filtering these tasks to find the relevant future `Plan Review` or `Review Documentation` task by its title and ensuring it is not yet approved.
         - The AI agent **MUST** then update the description of this identified future `Plan Review` or `Review Documentation` task by *appending* the human developer\'s input and any AI-generated enrichment. Care **MUST** be taken to preserve all existing content in that future task\'s description, especially the detailed plan carried over from any preceding Plan Review.
         - The current `Component Batch #n` task should then continue as originally defined, with the developer\'s broader plan feedback now safely captured for consideration at the next formal planning stage.
+
+- **Standard Commit Procedure**:
+    All commits, whether scheduled within a task (e.g., after a `Refactor` phase or `Review Documentation`) or requested ad-hoc by the human developer, **MUST** follow this procedure:
+
+    1.  **Identify Changes:** Review the files modified in the workspace (e.g., using `git status --porcelain` or IDE indicators) that are ready to be committed.
+    2.  **Craft Commit Message:** Prepare a commit message adhering to the Conventional Commits standard (see `commitlint.config.js`, which extends `@commitlint/config-conventional`). The message should accurately describe the work performed. Examples for New Use Case:
+        *   `feat: implement initial E2E test for X`
+        *   `feat: add skeleton for Y service`
+        *   `refactor(YService): improve method Z`
+        *   `docs: update X feature documentation`
+    3.  **Seek Approval & Stage Files:**
+        *   Present the list of files to be committed and the proposed commit message to the human developer for approval.
+        *   Upon receiving approval, stage **only** the agreed-upon files using the appropriate git command (e.g., `git add <file1> <file2>...` or `git add path/to/specific/file.ts`). This should be a single terminal command. *Avoid using `git add .` unless explicitly approved and all unstaged changes are intended for the commit.*
+    4.  **Perform Commit:** Execute the commit with the approved message (e.g., `git commit -m "Your conventional commit message"`). This should be a separate terminal command. Husky pre-commit hooks (linting, tests, etc.) will run automatically.
+    5.  **Handle Hook Results & Record Hash:**
+        *   **If Husky hooks fail:** The issues reported by Husky (e.g., linting errors, failing tests) **MUST** be corrected. After corrections, return to Step 3 (Seek Approval & Stage Files, as files will have changed) and repeat the commit process for the corrected changes.
+        *   **If Husky hooks pass:** Obtain the commit hash (e.g., using `git log -1 --pretty=format:%H`). This hash **MUST** be recorded in the `completedDetails` of the current task when it is marked as 'done'.
+
+    **Condition for Committing in New Use Case Category:**
+    *   **Scheduled Commits (end of `Refactor` or `Review Documentation` tasks):** All validations defined for that task (unit/integration tests, lint, build, E2E tests if applicable at that stage) **MUST** pass.
+    *   **Ad-hoc Commits (requested by human developer mid-task):** All unit and integration tests relevant to the changes being committed **MUST** be passing. The primary E2E acceptance test(s) do not need to be passing for these intermediate commits. Linting and build checks for the files being committed **MUST** be clean. The human developer provides the final go-ahead.
