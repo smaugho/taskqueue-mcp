@@ -26,7 +26,7 @@ flowchart TD
 ```
 
 - **Task `Plan Review #1`**:
-    - Run the full validation suite (`yarn test`, `yarn lint`, `yarn build`, `yarn start -h`, `yarn test:db:verify`, `yarn test:e2e`).
+    - Run the full validation suite (`npm test`).
     - Analyse the validation results in conjunction with the specifics of the bug report or modification request.
     - Identify all affected application layers (e.g., domain, application, infrastructure).
     - **Mandatory Pre-Formulation Step: Perform Reference Gathering.** Following the `dev_workflow` procedure for "Reference Gathering for New Tasks", collect all necessary references. This informs the formulation of all proposed new tasks detailed below.
@@ -58,8 +58,8 @@ flowchart TD
     - Actively look for opportunities to improve other parts of the files that were touched during the "Green" phase, even if these improvements are not directly related to the immediate objective of the current task.
     - Ensure all tests still pass.
     - Refer to `code_quality.mdc` for general coding standards.
-    - After validation, propose commit (include `.tasks.json`), await confirmation from human developer, commit, record hash.
-- **Task `Plan Review #n (n>1)`**: Run the full validation suite (`yarn test`, `yarn lint`, `yarn build`, `yarn start -h`, `yarn test:db:verify`, `yarn test:e2e`). Analyse the results to decide whether the goal has been met.
+    - After validation, propose commit, await confirmation from human developer, commit, record hash.
+- **Task `Plan Review #n (n>1)`**: Run the full validation suite (`npm test`). Analyse the results to decide whether the goal has been met.
     - If not met or further iterations are needed:
         - **Mandatory Pre-Formulation Step: Perform Reference Gathering.** Following the `dev_workflow` procedure for "Reference Gathering for New Tasks", collect all necessary references. This informs the formulation of all proposed new tasks detailed below.
         - Formulate a detailed plan for the next `Component Batch #n+1 – Red`, `Component Batch #n+1 – Green`, `Component Batch #n+1 – Refactor` tasks, and the subsequent `Plan Review #n+1` task.

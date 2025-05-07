@@ -30,6 +30,15 @@ function indentMultiLine(text: string | undefined | null, indentation = '   '): 
   return text.replace(/\r\n|\r|\n/g, '\n').split('\n').map(line => indentation + line).join(os.EOL);
 }
 
+/**
+ * Formats project and task data into a string suitable for the current_status.mdc file.
+ * The output includes project details (ID, name, status, plan) and task details (ID, title, status, description, completedDetails),
+ * as well as a potential rule excerpt related to the task.
+ * 
+ * @param project The project data, or null if no project is active.
+ * @param task The task data, or null if no task is active.
+ * @returns A string formatted for the .cursor/rules/current_status.mdc file.
+ */
 export function formatStatusFileContent(
   project: StatusFileProjectData | null,
   task: StatusFileTaskData | null

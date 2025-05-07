@@ -23,7 +23,7 @@ flowchart TD
 ```
 
 - **Task **`Plan Review #n`**:
-    - Run the full validation suite (`yarn test`, `yarn lint` (0 errors/0 warnings unless explicitly accepted), `yarn build`, `yarn start -h`, `yarn test:db:verify`, `yarn test:e2e`).
+    - Run the full validation suite (`npm test`).
     - Analyse the outcome of the validation suite to assess the current state of the refactoring efforts and overall code health.
     - **Mandatory Pre-Formulation Step: Perform Reference Gathering.** Following the `dev_workflow` procedure for "Reference Gathering for New Tasks", collect all necessary references. This informs the formulation of all proposed new tasks or documentation plans detailed below.
     - Define the scope and clear objectives for the next refactor batch or conclude refactoring if objectives are met.

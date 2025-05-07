@@ -28,7 +28,7 @@ flowchart TD
 
 - **Task `Acceptance Test (E2E) – Red`**: Write the high‑level failing E2E test(s) defining the desired user‑facing behaviour. **Tests MUST follow `testing_strategy.mdc` (behavioural focus, AAA structure, resilience).** Validate the expected failure and document it.
 - **Task `Plan Review #n`**:
-    - Run the full validation suite (`yarn test`, `yarn lint`, `yarn build`, `yarn start -h`, `yarn test:db:verify`, `yarn test:e2e`), including the primary Acceptance Test(s).
+    - Run the full validation suite (`npm test`), including the primary Acceptance Test(s).
     - Analyse the results of the validation suite, paying close attention to the primary Acceptance Test(s) outcome.
     - **Decision Point & Planning (based on analysis and primary Acceptance Test outcome):**
         - **Scenario 1: Primary Acceptance Tests pass AND further component work is deemed necessary.**
@@ -76,7 +76,7 @@ flowchart TD
     - Ensure all tests still pass.
     - Propose further test improvements for the next Plan Review.
     - Refer to `code_quality.mdc` for general coding standards.
-    - After validation, **propose commit (include `.tasks.json`) → await confirmation from human developer → commit → record hash.**
+    - After validation, **propose commit → await confirmation from human developer → commit → record hash.**
 - **Task `Review Documentation`**: Update docs/rules, propose commit, await confirmation from human developer, commit, record hash.
 
 - **Capturing Broader Plan Feedback Mid-Task**:
