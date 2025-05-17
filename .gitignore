@@ -16,3 +16,4 @@ tasks.json
 
 # MCP config
 .cursor/mcp.json
+.taskqueue.review.md

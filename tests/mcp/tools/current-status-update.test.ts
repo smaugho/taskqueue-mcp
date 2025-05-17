@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from '@jest/globals';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
-import { tmpdir } from 'node:os';
 import {
   setupTestContext,
   teardownTestContext,
@@ -12,16 +11,12 @@ import {
   readFileIfExists,
   assertFileDoesNotExist,
   ensureDirExists,
+  createTempCurrentProjectPath,
+  removeTempDir,
 } from '../test-helpers.js';
 import { Project, Task } from '../../../src/types/data.js';
 import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { formatStatusFileContent, StatusFileProjectData, StatusFileTaskData } from '../../../src/utils/statusFileFormatter.js';
-
-const createTempCurrentProjectPath = async (): Promise<string> => {
-  const tempDir = path.join(tmpdir(), 'current_status_tests', Date.now().toString() + Math.random().toString().substring(2));
-  await fs.mkdir(tempDir, { recursive: true });
-  return tempDir;
-};
 
 const getRulesDir = (currentProjectPath: string): string => path.join(currentProjectPath, '.cursor', 'rules');
 const getStatusFilePath = (currentProjectPath: string): string => path.join(getRulesDir(currentProjectPath), 'current_status.mdc');
@@ -37,9 +32,7 @@ describe('current_status.mdc Updates Feature (E2E Acceptance)', () => {
 
   afterEach(async () => {
     await teardownTestContext(contextInactive);
-    if (currentProjectPath) {
-      await fs.rm(currentProjectPath, { recursive: true, force: true });
-    }
+    await removeTempDir(currentProjectPath);
   });
 
   const setupProjectAndTaskInFile = async (

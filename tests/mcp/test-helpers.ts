@@ -22,6 +22,37 @@ export interface TestContext {
 }
 
 /**
+ * Creates a temporary directory for CURRENT_PROJECT_PATH testing.
+ */
+export const createTempCurrentProjectPath = async (): Promise<string> => {
+  // Using os.tmpdir() ensures it's a standard temporary directory.
+  // Adding a unique subdirectory for isolation.
+  const tempDir = path.join(os.tmpdir(), 'mcp_current_project_tests', Date.now().toString() + '_' + Math.random().toString().substring(2));
+  await fs.mkdir(tempDir, { recursive: true });
+  return tempDir;
+};
+
+/**
+ * Safely removes a temporary directory.
+ * @param dirPath The path to the directory to remove.
+ */
+export const removeTempDir = async (dirPath: string | undefined | null): Promise<void> => {
+  if (!dirPath) return;
+  try {
+    // Check if directory exists before attempting to remove
+    await fs.stat(dirPath); 
+    await fs.rm(dirPath, { recursive: true, force: true });
+  } catch (error: any) {
+    // Ignore ENOENT (file/directory not found), rethrow others
+    if (error.code !== 'ENOENT') {
+      console.error(`Error removing temp directory ${dirPath}:`, error);
+      // Optionally rethrow if the error is critical and not just a missing directory
+      // throw error;
+    }
+  }
+};
+
+/**
  * Sets up a test context with MCP client, transport, and temp directory
  */
 export async function setupTestContext(

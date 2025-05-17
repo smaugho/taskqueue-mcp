@@ -33,6 +33,10 @@ export enum AppErrorCode {
     LLMGenerationError = 'ERR_5000',
     LLMConfigurationError = 'ERR_5001', // Auth, key issues specifically with LLM provider call
   
+    // Task Approval Guard Errors (ERR_6xxx)
+    ApprovalRejected = 'ERR_6000', // Approval rejected by file deletion
+    ApprovalTimeout = 'ERR_6001', // Approval polling timed out
+  
     // Unknown / Catch-all (ERR_9xxx)
     Unknown = 'ERR_9999'
   }
