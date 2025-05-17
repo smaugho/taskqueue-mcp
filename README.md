@@ -187,7 +187,52 @@ Example for `.gitignore`:
 /.cursor/rules/current_status.mdc
 ```
 
-### Task Status and Workflows
+## Task Approval Guards (Manual Approval Workflow)
+
+`taskqueue-mcp` offers an optional, advanced feature for adding a manual approval step before tasks are marked as 'done' or formally 'approved'. This is useful for workflows requiring human review before proceeding.
+
+This feature is controlled by two environment variables, which **must be used in conjunction with `CURRENT_PROJECT_PATH`**.
+
+### Activation & Environment Variables
+
+To enable the guards, set the following environment variables when running the `taskqueue-mcp` server (e.g., in your MCP client configuration):
+
+-   `CURRENT_PROJECT_PATH="/path/to/your/current/project_root"`
+    -   **Required for guards to function.** This path specifies the directory where the review file will be created and monitored.
+-   `DONE_TASKS_GUARD="true"` (boolean as string)
+    -   If set to `"true"`, attempting to mark a task as 'done' (e.g., via the `update_task` tool) will trigger the manual approval workflow.
+-   `APPROVE_TASKS_GUARD="true"` (boolean as string)
+    -   If set to `"true"`, attempting to approve a completed task (e.g., via the `approve_task` tool) will trigger the manual approval workflow.
+
+If `CURRENT_PROJECT_PATH` is not set, these guards will have no effect even if set to `"true"`.
+
+### The `.taskqueue.review.md` File Workflow
+
+When a guarded operation is triggered (and the relevant guard is active with `CURRENT_PROJECT_PATH` set), the system will:
+
+1.  **Create/Overwrite File:** A file named `.taskqueue.review.md` is created (or overwritten) in the directory specified by `CURRENT_PROJECT_PATH`.
+2.  **File Content:** The file will contain:
+    *   Details of the project and the specific task being considered for the status change or approval.
+    *   A specific approval prompt section:
+        ```markdown
+        Approval required (remove # and save file for approving)
+        # YES
+        ```
+3.  **Polling & Waiting:** The operation (marking as 'done' or 'approving') will pause. The system will continuously poll the `.taskqueue.review.md` file.
+4.  **User Approval:** To approve, the user must edit the `.taskqueue.review.md` file and change the line `# YES` (under the prompt) to `YES` (case-insensitive, leading/trailing whitespace on the line is trimmed).
+5.  **Outcome (Approval):** Once the change to `YES` is detected:
+    *   The original operation (marking as 'done' or 'approving') proceeds.
+    *   The `.taskqueue.review.md` file is automatically deleted.
+6.  **Outcome (Rejection via Deletion):** If the `.taskqueue.review.md` file is deleted by an external process *before* approval is given via the file content, the operation is considered rejected, and an error will be returned by the tool.
+7.  **Polling Timeout:** (Currently not implemented) A timeout for the polling mechanism is a potential future enhancement. If implemented, operations might also be rejected if no approval is given within a certain timeframe.
+
+This feature ensures that critical task progressions can undergo manual review directly within the project's context.
+
+### Gitignore Recommendation for Review File
+
+Similar to `current_status.mdc`, the `.taskqueue.review.md` file is transient and specific to an approval instance. It is recommended to add it to your project's `.gitignore` file.
+
+## Task Status and Workflows
 
 Tasks have a status field that can be one of:
 - `not started`: Task has not been started yet
