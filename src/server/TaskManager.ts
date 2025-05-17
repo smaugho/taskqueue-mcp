@@ -21,12 +21,11 @@ import { FileSystemService } from "./FileSystemService.js";
 import { generateObject, jsonSchema } from "ai";
 import { writeFile, mkdir, readFile, stat, unlink } from 'node:fs/promises';
 import { formatStatusFileContent, StatusFileProjectData, StatusFileTaskData } from '../utils/statusFileFormatter.js';
+import { GuardManager } from './GuardManager.js';
 
 // Default path follows platform-specific conventions
 const DEFAULT_PATH = path.join(FileSystemService.getAppDataDir(), "tasks.json");
 const TASK_FILE_PATH = process.env.TASK_MANAGER_FILE_PATH || DEFAULT_PATH;
-const REVIEW_FILE_NAME = '.taskqueue.review.md';
-const POLLING_INTERVAL_MS = 1000;
 
 interface ProjectPlanOutput {
   projectPlan: string;
@@ -44,9 +43,11 @@ export class TaskManager {
   private data: TaskManagerFile = { projects: [] };
   private fileSystemService: FileSystemService;
   private initialized: Promise<void>;
+  private guardManager: GuardManager;
 
   constructor(testFilePath?: string) {
     this.fileSystemService = new FileSystemService(testFilePath || TASK_FILE_PATH);
+    this.guardManager = new GuardManager();
     this.initialized = this.loadTasks().catch(error => {
       console.error('Failed to initialize TaskManager:', error);
       // Set default values for failed initialization
@@ -303,110 +304,6 @@ export class TaskManager {
     };
   }
 
-  /**
-   * Checks if a specific task approval guard is active based on environment variables.
-   * A guard is active if its specific environment variable (DONE_TASKS_GUARD or APPROVE_TASKS_GUARD) is 'true' (case-insensitive)
-   * AND the CURRENT_PROJECT_PATH environment variable is set.
-   * @param guardName The name of the guard to check ('DONE' or 'APPROVE').
-   * @returns True if the guard is active, false otherwise.
-   */
-  private isGuardActive(guardName: 'DONE' | 'APPROVE'): boolean {
-    const guardEnvVar =
-      guardName === 'DONE'
-        ? process.env.DONE_TASKS_GUARD
-        : process.env.APPROVE_TASKS_GUARD;
-    const currentProjectPath = process.env.CURRENT_PROJECT_PATH;
-    return !!currentProjectPath && guardEnvVar?.toLowerCase() === 'true';
-  }
-
-  /**
-   * Handles the file-based approval process for a guarded operation.
-   * It polls the specified review file for an approval string ("YES") or
-   * until the file is deleted externally.
-   * 
-   * - If approved: Unlinks the review file and resolves.
-   * - If file deleted externally: Throws AppError with ApprovalRejected.
-   * - If other file read errors occur: Throws AppError with FileReadError.
-   * 
-   * @param reviewFilePath Full path to the .taskqueue.review.md file.
-   * @throws {AppError} If approval is rejected or a file read error occurs.
-   */
-  private async _handleApprovalGuard(
-    reviewFilePath: string 
-  ): Promise<void> {
-    while (true) {
-      try {
-        const content = await readFile(reviewFilePath, 'utf-8');
-        const lines = content.split('\n').map(line => line.trim());
-        const approvalPromptIndex = lines.findIndex(line => 
-          line.startsWith('Approval required (remove # and save file for approving)')
-        );
-        if (approvalPromptIndex !== -1 && approvalPromptIndex + 1 < lines.length) {
-          if (lines[approvalPromptIndex + 1].toLowerCase() === 'yes') {
-            await unlink(reviewFilePath); 
-            return; 
-          }
-        }
-      } catch (error: any) {
-        if (error.code === 'ENOENT') {
-          throw new AppError('Approval rejected by file deletion.', AppErrorCode.ApprovalRejected, error);
-        }
-        console.error(`Error reading review file ${reviewFilePath} during polling:`, error); 
-        throw new AppError(`Error reading review file: ${error.message}`, AppErrorCode.FileReadError, error);
-      }
-      await new Promise(resolve => setTimeout(resolve, POLLING_INTERVAL_MS));
-    }
-  }
-
-  /**
-   * Formats the content for the .taskqueue.review.md file.
-   * @param project The project context for the review.
-   * @param task The task context for the review.
-   * @param operationType The type of operation being guarded ('Mark Task as Done' or 'Approve Task').
-   * @param updates Optional updates, currently used for 'completedDetails' for 'Mark Task as Done'.
-   * @returns A string formatted for the review file.
-   */
-  private _formatReviewFileContent(
-    project: Project,
-    task: Task,
-    operationType: "Mark Task as Done" | "Approve Task",
-    updates?: { completedDetails?: string } 
-  ): string {
-    const formatMultiLine = (text: string | undefined | null, indent = '  ') => {
-      if (!text || text.trim() === '') return `${indent}(empty)`;
-      return text.replace(/\r\n|\r|\n/g, '\n').split('\n').map(line => `${indent}${line}`).join('\n');
-    };
-    let taskDetailsContent = `## Task Details for '${operationType}'
-- **Task ID:** ${task.id}
-- **Title:** ${task.title}
-- **Description:**
-${formatMultiLine(task.description)}
-`;
-    if (operationType === "Mark Task as Done") {
-      taskDetailsContent += `- **Proposed Completed Details:**\n${formatMultiLine(updates?.completedDetails || "")}\n`;
-    } else { 
-      taskDetailsContent += `- **Current Status:** ${task.status}\n`;
-      taskDetailsContent += `- **Completed Details:**\n${formatMultiLine(task.completedDetails || "")}\n`;
-    }
-    let projectPlanSummary = '';
-    if (project.projectPlan && project.projectPlan.trim() !== '') {
-      const planExcerpt = project.projectPlan.length > 300 
-        ? project.projectPlan.substring(0, 297) + "..." 
-        : project.projectPlan;
-      projectPlanSummary = `\n## Project Plan Summary:\n${formatMultiLine(planExcerpt)}\n`;
-    }
-    return `# Task Approval Guard: ${operationType}
-## Project Details
-- **Project ID:** ${project.projectId}
-- **Initial Prompt (Project Name):** ${project.initialPrompt}
-${projectPlanSummary}
-${taskDetailsContent}
----
-Approval required (remove # and save file for approving)
-# YES
-`;
-  }
-
   public async approveTaskCompletion(projectId: string, taskId: string): Promise<ApproveTaskSuccessData> {
     await this.ensureInitialized();
     await this.reloadFromDisk();
@@ -429,22 +326,20 @@ Approval required (remove # and save file for approving)
       throw new AppError('Task is already approved', AppErrorCode.TaskAlreadyApproved);
     }
 
-    if (this.isGuardActive('APPROVE')) {
-      const currentProjectPath = process.env.CURRENT_PROJECT_PATH!;
-      const reviewFilePath = path.join(currentProjectPath, REVIEW_FILE_NAME);
-      const reviewFileContent = this._formatReviewFileContent(proj, task, "Approve Task");
-      try {
-        await writeFile(reviewFilePath, reviewFileContent, 'utf-8');
-        await this._handleApprovalGuard(reviewFilePath);
-      } catch (e: any) {
-        if (e instanceof AppError && e.code === AppErrorCode.ApprovalRejected) {
-          throw e; 
-        }
-        console.error(`Failed to create or process review file ${reviewFilePath} for approveTask:`, e);
-        throw new AppError(`Error during approval guard process: ${e.message}`, AppErrorCode.FileWriteError, e); 
+    // Use GuardManager
+    try {
+      // Call GuardManager. processApprovalRequest will internally check if the guard is active.
+      await this.guardManager.processApprovalRequest(proj, task, 'APPROVE');
+    } catch (e: any) {
+      if (e instanceof AppError && e.code === AppErrorCode.ApprovalRejected) {
+        throw e; // Propagate specific guard rejection error
       }
+      // For other errors during guard processing (e.g., file write error inside GuardManager)
+      // or if the error is not an AppError with ApprovalRejected.
+      console.error(`Error during GuardManager processing for approveTask ${taskId}:`, e);
+      throw new AppError(`Guard processing failed for approveTask: ${e.message}`, AppErrorCode.Unknown, e); // Or a more specific error if identifiable
     }
-
+    
     task.approved = true;
     await this.saveTasks();
 
@@ -704,37 +599,39 @@ Approval required (remove # and save file for approving)
       );
     }
 
-    const updatedTask: Task = {
+    const preliminaryUpdatedTask: Task = { // Temp object to evaluate guard condition
       ...existingTask,
       ...updates,
       completedDetails: updates.status === "done" 
         ? (updates.completedDetails || existingTask.completedDetails || "Completed") 
         : (updates.status === "not started" || updates.status === "in progress" ? "" : existingTask.completedDetails)
     };
-    
-    if (updatedTask.status === 'done' && !existingTask.approved && this.isGuardActive('DONE')) {
-      const project = this.data.projects[projectIndex];
-      const currentProjectPath = process.env.CURRENT_PROJECT_PATH!;
-      const reviewFilePath = path.join(currentProjectPath, REVIEW_FILE_NAME);
-      const reviewFileContent = this._formatReviewFileContent(project, updatedTask, "Mark Task as Done", { completedDetails: updatedTask.completedDetails });
+
+    if (preliminaryUpdatedTask.status === 'done' && !existingTask.approved) {
       try {
-        await writeFile(reviewFilePath, reviewFileContent, 'utf-8');
-        await this._handleApprovalGuard(reviewFilePath);
+        // Pass existingTask details for the review file, but updates.completedDetails if provided for the review content.
+        await this.guardManager.processApprovalRequest(
+          this.data.projects[projectIndex], 
+          existingTask, // Use existingTask state for review context, provide updates for review content
+          'DONE', 
+          { completedDetails: preliminaryUpdatedTask.completedDetails }
+        );
       } catch (e: any) {
         if (e instanceof AppError && e.code === AppErrorCode.ApprovalRejected) {
           throw e;
         }
-        console.error(`Failed to create or process review file ${reviewFilePath} for updateTask to done:`, e);
-        throw new AppError(`Error during 'done' task guard process: ${e.message}`, AppErrorCode.FileWriteError, e);
+        console.error(`Error during GuardManager processing for updateTask to done ${taskId}:`, e);
+        throw new AppError(`Guard processing failed for updateTask: ${e.message}`, AppErrorCode.Unknown, e);
       }
     }
-    
-    this.data.projects[projectIndex].tasks[taskIndex] = updatedTask;
+        
+    // Actual update after guard (if any) has passed
+    this.data.projects[projectIndex].tasks[taskIndex] = preliminaryUpdatedTask;
     await this.saveTasks();
-    
-    await this._updateCurrentStatusFile(projectId, taskId, originalStatus, updatedTask.status);
 
-    return updatedTask;
+    await this._updateCurrentStatusFile(projectId, taskId, originalStatus, preliminaryUpdatedTask.status);
+
+    return preliminaryUpdatedTask;
   }
 
   public async deleteTask(projectId: string, taskId: string): Promise<DeleteTaskSuccessData> {
