@@ -40,6 +40,13 @@ async function approveInReviewFile(filePath: string): Promise<void> {
   await fs.writeFile(filePath, lines.join('\n'), 'utf-8');
 }
 
+// Helper to arbitrarily modify the review file content
+async function modifyReviewFileContent(filePath: string, modifier: (content: string) => string): Promise<void> {
+  let fileContent = await fs.readFile(filePath, 'utf-8');
+  fileContent = modifier(fileContent);
+  await fs.writeFile(filePath, fileContent, 'utf-8');
+}
+
 describe('Task Approval Guards E2E Tests', () => {
   // Variables will be scoped within each nested describe
 
@@ -268,8 +275,86 @@ describe('Task Approval Guards E2E Tests', () => {
       
       // Assert
       expect(reviewFileExistsInitially).not.toBeNull(); // Check it was created
-      verifyToolExecutionError(result, /Approval rejected by file deletion/);
+      verifyToolExecutionError(result, /Tool execution failed: Approval rejected by file deletion or file not found./);
       await verifyTaskInFile(context.testFilePath, projectId, taskId, { status: 'in progress' });
+    }, 15000);
+
+    it('should write a Process ID to the review file and succeed if PID matches on approval', async () => {
+      // Arrange
+      const updatePromise = context.client.callTool({
+        name: 'update_task',
+        arguments: { projectId, taskId, status: 'done', completedDetails: 'Done with PID check' },
+      }) as Promise<CallToolResult>;
+      
+      // Act
+      await new Promise(resolve => setTimeout(resolve, 500)); 
+      const reviewFileContentBeforeApproval = await readFileIfExists(reviewFilePath);
+      expect(reviewFileContentBeforeApproval).not.toBeNull();
+      expect(reviewFileContentBeforeApproval).toMatch(/^Process ID: .*$/m); // Check for Process ID line
+
+      await approveInReviewFile(reviewFilePath); // Simulate manual approval (PID implicitly matches)
+      const result = await updatePromise;
+      
+      // Assert
+      const updatedTask = verifyToolSuccessResponse<Task>(result);
+      expect(updatedTask.status).toBe('done');
+      expect(updatedTask.approved).toBe(true); // DONE_TASKS_GUARD also approves
+      await assertFileDoesNotExist(reviewFilePath);
+    }, 15000);
+
+    it('should fail with ApprovalProcessInterfered if PID in review file mismatches', async () => {
+      // Arrange
+      const updatePromise = context.client.callTool({
+        name: 'update_task',
+        arguments: { projectId, taskId, status: 'done', completedDetails: 'Done with PID mismatch attempt' },
+      }) as Promise<CallToolResult>;
+      
+      // Act
+      await new Promise(resolve => setTimeout(resolve, 500));
+      const reviewFileContentInitial = await readFileIfExists(reviewFilePath);
+      expect(reviewFileContentInitial).not.toBeNull();
+      expect(reviewFileContentInitial).toMatch(/^Process ID: .*$/m);
+
+      // Modify the PID to simulate interference
+      await modifyReviewFileContent(reviewFilePath, (content) => {
+        return content.replace(/^Process ID: .*$/m, 'Process ID: spoofed-uuid-12345');
+      });
+
+      const result = await updatePromise;
+      
+      verifyToolExecutionError(result, /Review file overwritten by another process.*found: spoofed-uuid-12345/);
+      // Ensure the review file is not deleted by the failed process, allowing inspection or retry by a correct process.
+      const reviewFileContentAfter = await readFileIfExists(reviewFilePath);
+      expect(reviewFileContentAfter).not.toBeNull(); 
+      expect(reviewFileContentAfter).toContain('Process ID: spoofed-uuid-12345');
+      await verifyTaskInFile(context.testFilePath, projectId, taskId, { status: 'in progress' }); // Task should not be updated
+    }, 15000);
+
+    it('should fail with ApprovalProcessInterfered if PID is missing from review file', async () => {
+      // Arrange
+      const updatePromise = context.client.callTool({
+        name: 'update_task',
+        arguments: { projectId, taskId, status: 'done', completedDetails: 'Done with missing PID attempt' },
+      }) as Promise<CallToolResult>;
+      
+      // Act
+      await new Promise(resolve => setTimeout(resolve, 500));
+      const reviewFileContentInitial = await readFileIfExists(reviewFilePath);
+      expect(reviewFileContentInitial).not.toBeNull();
+      expect(reviewFileContentInitial).toMatch(/^Process ID: .*$/m);
+
+      // Remove the PID line to simulate interference/corruption
+      await modifyReviewFileContent(reviewFilePath, (content) => {
+        return content.replace(/^Process ID: .*$\n?/m, '');
+      });
+      
+      const result = await updatePromise;
+      
+      verifyToolExecutionError(result, /Process ID missing from review file.*File may be corrupted or from an older version./);
+      const reviewFileContentAfter = await readFileIfExists(reviewFilePath);
+      expect(reviewFileContentAfter).not.toBeNull();
+      expect(reviewFileContentAfter).not.toMatch(/^Process ID: .*$/m); // Verify PID is indeed gone
+      await verifyTaskInFile(context.testFilePath, projectId, taskId, { status: 'in progress' }); // Task should not be updated
     }, 15000);
   });
 
@@ -342,7 +427,7 @@ describe('Task Approval Guards E2E Tests', () => {
       
       // Assert
       expect(reviewFileExistsInitially).not.toBeNull();
-      verifyToolExecutionError(result, /Approval rejected by file deletion/);
+      verifyToolExecutionError(result, /Tool execution failed: Approval rejected by file deletion or file not found./);
       await verifyTaskInFile(context.testFilePath, projectId, taskId, { approved: false });
     }, 15000);
   });

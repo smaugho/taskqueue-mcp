@@ -1,5 +1,6 @@
 import * as path from 'node:path';
 import { writeFile, readFile, unlink } from 'node:fs/promises';
+import crypto from 'node:crypto';
 import { Project, Task } from '../types/data.js';
 import { AppError, AppErrorCode } from '../types/errors.js';
 
@@ -33,14 +34,14 @@ export class GuardManager {
    * @param task The task context for the review.
    * @param operationType The type of operation being guarded ('Mark Task as Done' or 'Approve Task').
    * @param updates Optional updates, currently used for 'completedDetails' for 'Mark Task as Done'.
-   * @returns A string formatted for the review file.
+   * @returns An object containing the formatted string for the review file and the generated processId.
    */
   private formatReviewFileContent(
     project: Project,
     task: Task,
     operationType: "Mark Task as Done" | "Approve Task",
     updates?: { completedDetails?: string } 
-  ): string {
+  ): { content: string; processId: string } {
     const formatMultiLine = (text: string | undefined | null, indent = '  ') => {
       if (!text || text.trim() === '') return `${indent}(empty)`;
       return text.replace(/\r\n|\r|\n/g, '\n').split('\n').map(line => `${indent}${line}`).join('\n');
@@ -62,30 +63,57 @@ ${formatMultiLine(task.description)}
       const planExcerpt = project.projectPlan.length > 300 
         ? project.projectPlan.substring(0, 297) + "..." 
         : project.projectPlan;
-      projectPlanSummary = `\n## Project Plan Summary:\n${formatMultiLine(planExcerpt)}\n`;
+      projectPlanSummary = `
+## Project Plan Summary:
+${formatMultiLine(planExcerpt)}
+`;
     }
-    return `# Task Approval Guard: ${operationType}
+    const processId = crypto.randomUUID();
+    const content = `# Task Approval Guard: ${operationType}
 ## Project Details
 - **Project ID:** ${project.projectId}
 - **Initial Prompt (Project Name):** ${project.initialPrompt}
 ${projectPlanSummary}
 ${taskDetailsContent}
 ---
+Process ID: ${processId}
+---
 Approval required (remove # and save file for approving)
 # YES
 `;
+    return { content, processId };
   }
   
   /**
    * Handles the file-based approval process for a guarded operation.
    * @param reviewFilePath Full path to the .taskqueue.review.md file.
-   * @throws {AppError} If approval is rejected, times out, or a file read error occurs.
+   * @param expectedProcessId The process ID that was written to the review file.
+   * @throws {AppError} If approval is rejected, times out, a file read error occurs, or a process ID mismatch is detected.
    */
-  private async handleApprovalPolling(reviewFilePath: string): Promise<void> {
+  private async handleApprovalPolling(reviewFilePath: string, expectedProcessId: string): Promise<void> {
     while (true) {
       try {
-        const content = await readFile(reviewFilePath, 'utf-8');
-        const lines = content.split('\n').map(line => line.trim());
+        const fileContent = await readFile(reviewFilePath, 'utf-8');
+        const lines = fileContent.split('\n').map(line => line.trim());
+        
+        const processIdLine = lines.find(line => line.startsWith('Process ID:'));
+        if (processIdLine) {
+          const actualProcessId = processIdLine.substring('Process ID:'.length).trim();
+          if (actualProcessId !== expectedProcessId) {
+            throw new AppError(
+              `Review file overwritten by another process. Expected PID: ${expectedProcessId}, found: ${actualProcessId}.`,
+              AppErrorCode.ApprovalProcessInterfered
+            );
+          }
+        } else {
+          // If the Process ID line is missing, it might be an old file or corrupted.
+          // For now, we can treat this as an interference as well, or a different error code.
+          throw new AppError(
+            `Process ID missing from review file. Expected PID: ${expectedProcessId}. File may be corrupted or from an older version.`,
+            AppErrorCode.ApprovalProcessInterfered // Or a new specific error code
+          );
+        }
+
         const approvalPromptIndex = lines.findIndex(line => 
           line.startsWith('Approval required (remove # and save file for approving)')
         );
@@ -96,8 +124,12 @@ Approval required (remove # and save file for approving)
           }
         }
       } catch (error: any) {
+        if (error instanceof AppError) throw error;
         if (error.code === 'ENOENT') {
-          throw new AppError('Approval rejected by file deletion.', AppErrorCode.ApprovalRejected, error);
+          // This means the file was deleted. If our PID matched before deletion (or if PID check wasn't reached),
+          // it implies the user might have approved by deleting the file after removing the #, 
+          // or rejected by deleting without modifying.
+          throw new AppError('Approval rejected by file deletion or file not found.', AppErrorCode.ApprovalRejected, error);
         }
         console.error(`Error reading review file ${reviewFilePath} during polling:`, error); 
         throw new AppError(`Error reading review file: ${error.message}`, AppErrorCode.FileReadError, error);
@@ -128,14 +160,11 @@ Approval required (remove # and save file for approving)
       const currentProjectPath = currentEnv.CURRENT_PROJECT_PATH!;
       const reviewFilePath = path.join(currentProjectPath, REVIEW_FILE_NAME);
       const taskForReview = operationType === 'DONE' ? { ...task, completedDetails: updates?.completedDetails ?? task.completedDetails } : task;
-      const reviewFileContent = this.formatReviewFileContent(project, taskForReview, opTypeString, updates); 
       
-      try {
-        await writeFile(reviewFilePath, reviewFileContent, 'utf-8');
-        await this.handleApprovalPolling(reviewFilePath);
-      } catch (e) {
-        throw e;
-      }
+      const { content: reviewFileContent, processId } = this.formatReviewFileContent(project, taskForReview, opTypeString, updates);
+      
+      await writeFile(reviewFilePath, reviewFileContent, 'utf-8');
+      await this.handleApprovalPolling(reviewFilePath, processId);
     }
   }
 } 

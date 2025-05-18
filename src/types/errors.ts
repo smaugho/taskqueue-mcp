@@ -36,6 +36,7 @@ export enum AppErrorCode {
     // Task Approval Guard Errors (ERR_6xxx)
     ApprovalRejected = 'ERR_6000', // Approval rejected by file deletion
     ApprovalTimeout = 'ERR_6001', // Approval polling timed out
+    ApprovalProcessInterfered = 'ERR_6002', // Review file overwritten or PID mismatch
   
     // Unknown / Catch-all (ERR_9xxx)
     Unknown = 'ERR_9999'
