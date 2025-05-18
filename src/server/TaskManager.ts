@@ -607,6 +607,7 @@ export class TaskManager {
         : (updates.status === "not started" || updates.status === "in progress" ? "" : existingTask.completedDetails)
     };
 
+    let doneGuardProcessedAndApproved = false;
     if (preliminaryUpdatedTask.status === 'done' && !existingTask.approved) {
       try {
         // Pass existingTask details for the review file, but updates.completedDetails if provided for the review content.
@@ -616,6 +617,10 @@ export class TaskManager {
           'DONE', 
           { completedDetails: preliminaryUpdatedTask.completedDetails }
         );
+        
+        if (this.guardManager.isGuardActive('DONE')) {
+          doneGuardProcessedAndApproved = true;
+        }
       } catch (e: any) {
         if (e instanceof AppError && e.code === AppErrorCode.ApprovalRejected) {
           throw e;
@@ -624,8 +629,11 @@ export class TaskManager {
         throw new AppError(`Guard processing failed for updateTask: ${e.message}`, AppErrorCode.Unknown, e);
       }
     }
-        
-    // Actual update after guard (if any) has passed
+    
+    if (doneGuardProcessedAndApproved) {
+      preliminaryUpdatedTask.approved = true; // Auto-approve if DONE_TASKS_GUARD was processed and satisfied
+    }
+
     this.data.projects[projectIndex].tasks[taskIndex] = preliminaryUpdatedTask;
     await this.saveTasks();
 

@@ -23,11 +23,6 @@ const REVIEW_FILE_NAME = '.taskqueue.review.md';
 const APPROVAL_TEXT = 'YES';
 const PROMPT_TEXT = 'Approval required (remove # and save file for approving)';
 
-// Helper to write to the review file
-async function writeReviewFile(filePath: string, content: string): Promise<void> {
-  await fs.writeFile(filePath, content, 'utf-8');
-}
-
 // Helper to modify the approval line in the review file
 async function approveInReviewFile(filePath: string): Promise<void> {
   const fileContent = await fs.readFile(filePath, 'utf-8');
@@ -88,7 +83,9 @@ describe('Task Approval Guards E2E Tests', () => {
       const updatedTask = verifyToolSuccessResponse<Task>(result);
       expect(updatedTask.status).toBe('done');
       expect(updatedTask.id).toBe(taskId);
+      expect(updatedTask.approved).toBe(false);
       await assertFileDoesNotExist(reviewFilePath);
+      await verifyTaskInFile(context.testFilePath, projectId, taskId, { status: 'done', approved: false });
     });
 
     it('APPROVE_TASKS_GUARD: should proceed normally', async () => {
@@ -177,8 +174,6 @@ describe('Task Approval Guards E2E Tests', () => {
     let taskId: string;
     let currentProjectPath: string;
     let reviewFilePath: string;
-    let POLLING_TIMEOUT_MS_FROM_TASK_MANAGER = 5 * 60 * 1000; // Align with TaskManager.ts
-    let POLLING_INTERVAL_MS_FROM_TASK_MANAGER = 1000; // Align with TaskManager.ts
 
     beforeEach(async () => {
       currentProjectPath = await createTempCurrentProjectPath();
@@ -229,6 +224,35 @@ describe('Task Approval Guards E2E Tests', () => {
       await assertFileDoesNotExist(reviewFilePath);
     }, 15000);
 
+    it('should set status to done AND approved to true when DONE_TASKS_GUARD is active and satisfied', async () => {
+      // Arrange
+      // Test context, projectId, taskId, reviewFilePath are set in beforeEach for this suite
+
+      const updatePromise = context.client.callTool({
+        name: 'update_task',
+        arguments: { projectId, taskId, status: 'done', completedDetails: 'Done via DONE_GUARD auto-approval test' },
+      }) as Promise<CallToolResult>;
+      
+      // Act
+      // Allow time for initial file creation attempt & task to pause
+      await new Promise(resolve => setTimeout(resolve, 500)); 
+      const reviewFileContentBeforeApproval = await readFileIfExists(reviewFilePath);
+      expect(reviewFileContentBeforeApproval).not.toBeNull(); // Ensure review file was created
+      await approveInReviewFile(reviewFilePath); // Simulate manual approval of the DONE guard
+      const result = await updatePromise; // Now the original operation should complete
+      
+      // Assert
+      const updatedTask = verifyToolSuccessResponse<Task>(result);
+      expect(updatedTask.status).toBe('done');
+      expect(updatedTask.completedDetails).toBe('Done via DONE_GUARD auto-approval test');
+      expect(updatedTask.approved).toBe(true); // Key assertion: task SHOULD be approved
+      
+      await assertFileDoesNotExist(reviewFilePath); // Ensure review file is cleaned up
+
+      // Verify persisted state in the file
+      await verifyTaskInFile(context.testFilePath, projectId, taskId, { status: 'done', approved: true });
+    }, 15000);
+
     it('should fail if review file is deleted externally', async () => {
       // Arrange
       const updatePromise = context.client.callTool({
@@ -255,8 +279,6 @@ describe('Task Approval Guards E2E Tests', () => {
     let taskId: string;
     let currentProjectPath: string;
     let reviewFilePath: string;
-    let POLLING_TIMEOUT_MS_FROM_TASK_MANAGER = 5 * 60 * 1000;
-    let POLLING_INTERVAL_MS_FROM_TASK_MANAGER = 1000;
 
     beforeEach(async () => {
       currentProjectPath = await createTempCurrentProjectPath();
